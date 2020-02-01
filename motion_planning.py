@@ -72,40 +72,41 @@ class MotionPlanning(Drone):
                     self.manual_transition()
 
     def arming_transition(self):
-        self.flight_state = States.ARMING
         print("arming transition")
         self.arm()
         self.take_control()
+        self.flight_state = States.ARMING
 
     def takeoff_transition(self):
-        self.flight_state = States.TAKEOFF
         print("takeoff transition")
         self.takeoff(self.target_position[2])
+        self.flight_state = States.TAKEOFF
 
     def waypoint_transition(self):
-        self.flight_state = States.WAYPOINT
         print("waypoint transition")
         self.target_position = self.waypoints.pop(0)
         print('target position', self.target_position)
-        self.cmd_position(self.target_position[0], self.target_position[1], self.target_position[2], self.target_position[3])
+        self.cmd_position(self.target_position[0], self.target_position[1],
+                          self.target_position[2], self.target_position[3])
+        self.flight_state = States.WAYPOINT
 
     def landing_transition(self):
-        self.flight_state = States.LANDING
         print("landing transition")
         self.land()
+        self.flight_state = States.LANDING
 
     def disarming_transition(self):
-        self.flight_state = States.DISARMING
         print("disarm transition")
         self.disarm()
         self.release_control()
+        self.flight_state = States.DISARMING
 
     def manual_transition(self):
-        self.flight_state = States.MANUAL
         print("manual transition")
         self.stop()
         self.in_mission = False
-
+        self.flight_state = States.MANUAL
+		
     def send_waypoints(self):
         print("Sending waypoints to simulator ...")
         data = msgpack.dumps(self.waypoints)
@@ -127,7 +128,8 @@ class MotionPlanning(Drone):
  
         # TODO: convert to current local position using global_to_local()
         
-        print('global home {0}, position {1}, local position {2}'.format(self.global_home, self.global_position,
+        print('global home {0}, position {1}, local position {2}'.format(self.global_home,
+                                                                         self.global_position,
                                                                          self.local_position))
         # Read in obstacle map
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
