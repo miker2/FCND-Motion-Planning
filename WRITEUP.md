@@ -18,9 +18,6 @@
 
 ### Explain the Starter Code
 
-Explain the functionality of what's provided in `motion_planning.py` and `planning_utils.py`
-These scripts contain a basic planning implementation that includes...
-
 #### 1. `motion_planning.py`
 
 This script is very similar to the backyard flyer script. It uses event driven programming to command the quadrotor to arm, take-off, follow waypoints, land and then disarm.
@@ -38,31 +35,26 @@ This script contains some of the key building blocks of a path planning algorith
 that we have been developing and using in the Planning unit of this nanodegree
 program. The script includes the following functions/classes:
 
-##### A. create_grid
-
-This is the method we have been using to generate a discretized grid based on the
+  1. `create_grid`  
+    The method we have been using to generate a discretized grid based on the
 obstacles described by `colliders.csv`.
 
-##### B. Action
-
-This is the class that has been used by the A* algorithm to describe all possible
+  2. `Action`  
+    The class that has been used by the A* algorithm to describe all possible
 actions that will produce a new state from a current state. This class also provides
 the cost associated with that action.
 
-##### C. valid_actions
-
-This method prunes the list of all possible actions down to a list of valid actions
+  3. `valid_actions`  
+    This method prunes the list of all possible actions down to a list of valid actions
 based on the configuration space (map extents and obstacle locations).
 
-##### D. a_star
-
-This is the basic A* algorithm suited to planning a path through a grid based
+  4. `a_star`  
+    Basic A* algorithm suited to planning a path through a grid based
 2D configuration space.
 
-##### E. hueristic
-
-This method provides the estimated cost from a state to a goal position. The
-hueristic used here is euclidian distance.
+  5. `heuristic`  
+    Provides the estimated cost from a state to a goal position. The
+heuristic used here is euclidian distance.
 
 ### Implementing The Path Planning Algorithm
 
@@ -81,11 +73,26 @@ Here's | A | Snappy | Table
 ### Implementing Your Path Planning Algorithm
 
 #### 1. Set your global home position
-Here students should read the first line of the csv file, extract lat0 and lon0 as floating point values and use the self.set_home_position() method to set global home. Explain briefly how you accomplished this in your code.
+I used the following code to read the latitude & longitude from the `colliders.csv` file.
 
+    # Read lat0, lon0 from colliders into floating point values
+    lat_lon_str = 'lat0 0, lon0 0'  # default in case file read fails.
+    with open('colliders.csv') as f:
+        lat_lon_str = f.readline()  # lat/lon is on the first line, so we only need to read one
+        f.close()                   # Close the file when done!
 
-And here is a lovely picture of our downtown San Francisco environment from above!
-![Map of SF](./misc/map.png)
+    # The lat/lon string sort of looks like a comma separate list of key/value
+    # pairs, so we'll parse it under that assumption.
+    lat_lon_dict = dict(item.split() for item in lat_lon_str.split(','))
+    # set home position to (lon0, lat0, 0)
+    self.set_home_position(float(lat_lon_dict['lon0']),  # `lon0` still a string, so convert
+                           float(lat_lon_dict['lat0']),  # 'lat0' still a string, so convert
+                           0.0)
+
+There are many ways to parse the string into the float values include regular expressions,
+splitting the string on the command and then selecting everything from the 5th character to
+the end of each of the two strings, etc, but I opted for a method that would be slightly
+more robust in the event that the `lat0` and `lon0` entries in the file swapped places.
 
 #### 2. Set your current local position
 Here as long as you successfully determine your local position relative to global home you'll be all set. Explain briefly how you accomplished this in your code.

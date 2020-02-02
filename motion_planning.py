@@ -1,6 +1,7 @@
 import argparse
 import time
 import msgpack
+import re
 from enum import Enum, auto
 
 import numpy as np
@@ -120,13 +121,31 @@ class MotionPlanning(Drone):
 
         self.target_position[2] = TARGET_ALTITUDE
 
-        # TODO: read lat0, lon0 from colliders into floating point values
-        
-        # TODO: set home position to (lon0, lat0, 0)
+        # Read lat0, lon0 from colliders into floating point values
+        lat_lon_str = 'lat0 0, lon0 0'  # default in case file read fails.
+        with open('colliders.csv') as f:
+            lat_lon_str = f.readline()
+            f.close()
 
+        # The lat/lon string sort of looks like a comma separate list of key/value
+        # pairs, so we'll parse it under that assumption. Obviously the format of
+        # the colliders.csv file isn't going to change while completing this project
+        # but this adds a bit of robustness to the parsing strategy.
+        lat_lon_dict = dict(item.split() for item in lat_lon_str.split(','))
+        # Convert to float:
+        for k, v in lat_lon_dict.items():
+            lat_lon_dict[k] = float(v)
+        # set home position to (lon0, lat0, 0)
+        self.set_home_position(lat_lon_dict['lon0'],
+                               lat_lon_dict['lat0'],
+                               0.0)
+        
         # TODO: retrieve current global position
  
         # TODO: convert to current local position using global_to_local()
+        _local_position = global_to_local(self.global_position, self.global_home)
+
+        print('_local_position {0}'.format(_local_position))
         
         print('global home {0}, position {1}, local position {2}'.format(self.global_home,
                                                                          self.global_position,
