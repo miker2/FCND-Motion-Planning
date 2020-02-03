@@ -78,28 +78,34 @@ I used the following code to read the latitude & longitude from the `colliders.c
     # Read lat0, lon0 from colliders into floating point values
     lat_lon_str = 'lat0 0, lon0 0'  # default in case file read fails.
     with open('colliders.csv') as f:
-        lat_lon_str = f.readline()  # lat/lon is on the first line, so we only need to read one
+        lat_lon_str = f.readline()  # lat/lon is on the first line, so we only
+				                            # need to call `readline` once.
         f.close()                   # Close the file when done!
 
     # The lat/lon string sort of looks like a comma separate list of key/value
     # pairs, so we'll parse it under that assumption.
     lat_lon_dict = dict(item.split() for item in lat_lon_str.split(','))
+		# Convert to float:
+		for k, v in lat_lon_dict.items():
+		    lat_lon_dict[k] = float(v)
     # set home position to (lon0, lat0, 0)
-    self.set_home_position(float(lat_lon_dict['lon0']),  # `lon0` still a string, so convert
-                           float(lat_lon_dict['lat0']),  # 'lat0' still a string, so convert
+    self.set_home_position(lat_lon_dict['lon0'],
+                           lat_lon_dict['lat0'],
                            0.0)
 
-There are many ways to parse the string into the float values include regular expressions,
+There are many ways to parse the string into the float values including regular expressions,
 splitting the string on the command and then selecting everything from the 5th character to
 the end of each of the two strings, etc, but I opted for a method that would be slightly
-more robust in the event that the `lat0` and `lon0` entries in the file swapped places.
+more robust in the event that the `lat0` and `lon0` entries in the file swapped places. While
+this won't happen for this project, a dictionary is still a convenient way to accessing the
+information by name.
 
 #### 2. Set your current local position
-Here as long as you successfully determine your local position relative to global home you'll be all set. Explain briefly how you accomplished this in your code.
-
-
-Meanwhile, here's a picture of me flying through the trees!
-![Forest Flying](./misc/in_the_trees.png)
+We don't actually need to set the current local position here. While we can use
+`self.global_position` and `self.global_home` (which we just updated by calling
+`self.set_home_position(...)`) to calculate our current local position, we can also
+access the `local_position` attribute of our class to get the local position, which
+is what I do. In addition, `local_position` is a read-only attribute and is not settable.
 
 #### 3. Set grid start position from local position
 This is another step in adding flexibility to the start location. As long as it works you're good to go!
@@ -113,6 +119,10 @@ Minimal requirement here is to modify the code in planning_utils() to update the
 #### 6. Cull waypoints
 For this step you can use a collinearity test or ray tracing method like Bresenham. The idea is simply to prune your path of unnecessary waypoints. Explain the code you used to accomplish this step.
 
+
+
+Meanwhile, here's a picture of me flying through the trees!
+![Forest Flying](./misc/in_the_trees.png)
 
 
 ### Execute the flight

@@ -5,6 +5,7 @@ import re
 from enum import Enum, auto
 
 import numpy as np
+from bresenham import bresenham
 
 from planning_utils import a_star, heuristic, create_grid
 from udacidrone import Drone
@@ -12,6 +13,37 @@ from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
 from udacidrone.frame_utils import global_to_local
 
+## Some helper functions
+def _calculate_waypoint_heading(waypoints):
+
+    for k in range(1,len(waypoints)):
+        p0 = waypoints[k-1]
+        p1 = waypoints[k]
+        angle = np.arctan2(p1[1] - p0[1], p1[0] - p0[0])
+        print('p0: {}, p1: {}, angle: {}'.format(p0, p1, angle))
+        waypoints[k][3] = angle
+    waypoints[-1][3] = angle
+
+def _prune_redundant(path, grid):
+    # Convert this to use a binary search method.
+    if path is not None:
+        pruned_path = [path[0]]
+        j = 1
+        while j < len(path):
+            pi = pruned_path[-1]
+            pe = path[j]
+            print('Checking {} and {} for collisions.'.format(pi, pe))
+            ray = bresenham(pi[0], pi[1], int(pe[0]), int(pe[1]))
+            redundant = (np.sum([grid[ri,rj] for ri, rj in ray]) == 0)
+            print('j: {}, ray: {}, redundant: {}'.format(j, ray, redundant))
+            if redundant:
+                j += 1
+            else:
+                pruned_path.append(path[j-1])
+        pruned_path.append(path[-1])
+        return pruned_path
+    else:
+        return path
 
 class States(Enum):
     MANUAL = auto()
@@ -35,6 +67,8 @@ class MotionPlanning(Drone):
 
         # initial state
         self.flight_state = States.MANUAL
+
+        self._grid_offset = (0, 0)
 
         # register all your callbacks here
         self.register_callback(MsgID.LOCAL_POSITION, self.local_position_callback)
@@ -107,11 +141,19 @@ class MotionPlanning(Drone):
         self.stop()
         self.in_mission = False
         self.flight_state = States.MANUAL
-		
+
     def send_waypoints(self):
         print("Sending waypoints to simulator ...")
         data = msgpack.dumps(self.waypoints)
         self.connection._master.write(data)
+
+    def global_to_grid(self, global_position):
+         _local_position = global_to_local(global_position, self.global_home)
+         return self.local_to_grid(_local_position)
+
+    def local_to_grid(self, local_position):
+        return (int(round(local_position[0]) - self._grid_offset[0]),
+                int(round(local_position[1]) - self._grid_offset[1]))
 
     def plan_path(self):
         self.flight_state = States.PLANNING
@@ -139,45 +181,74 @@ class MotionPlanning(Drone):
         self.set_home_position(lat_lon_dict['lon0'],
                                lat_lon_dict['lat0'],
                                0.0)
-        
-        # TODO: retrieve current global position
- 
-        # TODO: convert to current local position using global_to_local()
-        _local_position = global_to_local(self.global_position, self.global_home)
 
+        # TODO: retrieve current global position
+
+        # We can convert to current local position using global_to_local(), but we don't
+        # need to set the local_position, because that is done automatically now that the
+        # home position has been set.
+        _local_position = global_to_local(self.global_position, self.global_home)
+        # Print the temporary variable '_local_position' so we can compare it to the
+        # member attribute.
         print('_local_position {0}'.format(_local_position))
-        
+
         print('global home {0}, position {1}, local position {2}'.format(self.global_home,
                                                                          self.global_position,
                                                                          self.local_position))
         # Read in obstacle map
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
-        
+
         # Define a grid for a particular altitude and safety margin around obstacles
-        grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
-        print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
-        # Define starting point on the grid (this is just grid center)
-        grid_start = (-north_offset, -east_offset)
-        # TODO: convert start position to current position rather than map center
-        
-        # Set goal as some arbitrary position on the grid
-        grid_goal = (-north_offset + 10, -east_offset + 10)
-        # TODO: adapt to set goal as latitude / longitude position and convert
+        grid, self._grid_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+        print("North offset = {0}, east offset = {1}".format(self._grid_offset[0],
+                                                             self._grid_offset[1]))
+
+        # Define starting point on the grid. The 'local_position' is relative to the grid center
+        # So we want to set the starting position on the grid equal to our current position,
+        # offset by the grid offset.
+        grid_start = self.local_to_grid(self.local_position)
+
+        # Select a random goal location from Google Maps (using longitude/latitude):
+        goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
+        goal_location = (-122.398718, 37.792104, 0)  # temporary closer spot
+
+        # Convert the lat/lon goal location into a grid location:
+        grid_goal = self.global_to_grid(goal_location)
+
+        #grid_goal = self.local_to_grid((-30, 60))
 
         # Run A* to find a path from start to goal
         # TODO: add diagonal motions with a cost of sqrt(2) to your A* implementation
         # or move to a different search space such as a graph (not done here)
         print('Local Start and Goal: ', grid_start, grid_goal)
         path, _ = a_star(grid, heuristic, grid_start, grid_goal)
+
+        print('Found a path with {} nodes.'.format(len(path)))
         # TODO: prune path to minimize number of waypoints
         # TODO (if you're feeling ambitious): Try a different approach altogether!
 
+        pruned_path = _prune_redundant(path, grid)
+        print(pruned_path)
+        print('pruned path has {} waypoints.'.format(len(pruned_path)))
+
+        path = pruned_path
+
         # Convert path to waypoints
-        waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in path]
+        waypoints = [[p[0] + self._grid_offset[0], p[1] + self._grid_offset[1],
+                      TARGET_ALTITUDE, 0] for p in path]
+        print(waypoints)
+        _calculate_waypoint_heading(waypoints)
+        print(waypoints)
+
         # Set self.waypoints
         self.waypoints = waypoints
-        # TODO: send waypoints to sim (this is just for visualization of waypoints)
-        self.send_waypoints()
+        # Send waypoints to sim (this is just for visualization of waypoints)
+        # This is wrapped in a try/except block because the simulator sometimes barfs
+        # on this call which is annoying.
+        try:
+            self.send_waypoints()
+        except AttributeError:
+            pass
 
     def start(self):
         self.start_log("Logs", "NavLog.txt")

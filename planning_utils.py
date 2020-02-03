@@ -38,7 +38,7 @@ def create_grid(data, drone_altitude, safety_distance):
             ]
             grid[obstacle[0]:obstacle[1]+1, obstacle[2]:obstacle[3]+1] = 1
 
-    return grid, int(north_min), int(east_min)
+    return grid, (int(north_min), int(east_min))
 
 
 # Assume all actions cost the same.
@@ -51,10 +51,15 @@ class Action(Enum):
     is the cost of performing the action.
     """
 
-    WEST = (0, -1, 1)
-    EAST = (0, 1, 1)
-    NORTH = (-1, 0, 1)
-    SOUTH = (1, 0, 1)
+    UP = (-1, 0, 1)
+    URIGHT = (-1, 1, np.math.sqrt(2))
+    RIGHT = (0, 1, 1)
+    DRIGHT = (1, 1, np.math.sqrt(2))
+    DOWN = (1, 0, 1)
+    DLEFT = (1, -1, np.math.sqrt(2))
+    LEFT = (0, -1, 1)
+    ULEFT = (-1, -1, np.math.sqrt(2))
+
 
     @property
     def cost(self):
@@ -69,23 +74,25 @@ def valid_actions(grid, current_node):
     """
     Returns a list of valid actions given a grid and current node.
     """
-    valid_actions = list(Action)
+    #valid = [Action.UP, Action.LEFT, Action.RIGHT, Action.DOWN]
+    valid = [a for a in Action]
     n, m = grid.shape[0] - 1, grid.shape[1] - 1
     x, y = current_node
 
     # check if the node is off the grid or
     # it's an obstacle
 
-    if x - 1 < 0 or grid[x - 1, y] == 1:
-        valid_actions.remove(Action.NORTH)
-    if x + 1 > n or grid[x + 1, y] == 1:
-        valid_actions.remove(Action.SOUTH)
-    if y - 1 < 0 or grid[x, y - 1] == 1:
-        valid_actions.remove(Action.WEST)
-    if y + 1 > m or grid[x, y + 1] == 1:
-        valid_actions.remove(Action.EAST)
+    for a in Action:
+        new_x = x + a.delta[0]
+        new_y = y + a.delta[1]
+        # Check if the node is off the grid
+        if new_x < 0 or new_x > n or new_y < 0 or new_y > m:
+            valid.remove(a)
+        # Check if the node is an obstacle
+        elif grid[new_x, new_y] == 1:
+            valid.remove(a)
 
-    return valid_actions
+    return valid
 
 
 def a_star(grid, h, start, goal):
