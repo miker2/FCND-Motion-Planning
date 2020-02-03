@@ -2,7 +2,6 @@
 
 ---
 
-
 # Required Steps for a Passing Submission:
 1. Load the 2.5D map in the colliders.csv file describing the environment.
 2. Discretize the environment into a grid or graph representation.
@@ -58,28 +57,13 @@ heuristic used here is euclidian distance.
 
 ### Implementing The Path Planning Algorithm
 
-**Get on with it already! Go and implement your planning algorithm!**
-
-And here's a lovely image of my results (ok this image has nothing to do with it, but it's a nice example of how to include images in your writeup!)
-![Top Down View](./misc/high_up.png)
-
-Here's | A | Snappy | Table
---- | --- | --- | ---
-1 | `highlight` | **bold** | 7.41
-2 | a | b | c
-3 | *italic* | text | 403
-4 | 2 | 3 | abcd
-
-### Implementing Your Path Planning Algorithm
-
 #### 1. Set your global home position
 I used the following code to read the latitude & longitude from the `colliders.csv` file.
 
     # Read lat0, lon0 from colliders into floating point values
     lat_lon_str = 'lat0 0, lon0 0'  # default in case file read fails.
     with open('colliders.csv') as f:
-        lat_lon_str = f.readline()  # lat/lon is on the first line, so we only
-				                            # need to call `readline` once.
+        lat_lon_str = f.readline()  # lat/lon is on the first line, only call `readline` once.
         f.close()                   # Close the file when done!
 
     # The lat/lon string sort of looks like a comma separate list of key/value
@@ -108,10 +92,39 @@ access the `local_position` attribute of our class to get the local position, wh
 is what I do. In addition, `local_position` is a read-only attribute and is not settable.
 
 #### 3. Set grid start position from local position
-This is another step in adding flexibility to the start location. As long as it works you're good to go!
+The local position is the quadrotor's current position relative to the global home. Since we
+set the global home to the location of the center of the map/grid, then we want to make sure
+that we set the grid start position to the `local_position` and then offset that by the grid
+offset (`north_offset` and `east_offset`) This means that whenever the `plan_path` method
+is called, the plan will always start from the quadrotor's current position.
+
+In order to facilitate this I wrote a new method `local_to_grid` which takes a local position
+and converts it into a position in the grid. It looks like this:
+
+    def local_to_grid(self, local_position):
+		    # Offset the local (NED) position by the grid offset, and cast to int.
+        return (int(round(local_position[0]) - self._grid_offset[0]),
+                int(round(local_position[1]) - self._grid_offset[1]))
+
+In order to set the starting point of the planning problem I added the following line to
+the `plan_path` method:
+
+    grid_start = self.local_to_grid(self.local_position)
 
 #### 4. Set grid goal position from geodetic coords
-This step is to add flexibility to the desired goal location. Should be able to choose any (lat, lon) within the map and have it rendered to a goal location on the grid.
+I achieved this by again creating another helper function `global_to_grid` which converts a
+global geodetic position to a local position and then calls the `local_to_grid` function to
+set the goal position. The helper method looks like this:
+
+    def global_to_grid(self, global_position):
+         _local_position = global_to_local(global_position, self.global_home)
+         return self.local_to_grid(_local_position)
+
+And the line of code I added is the following:
+
+    # Convert the lat/lon goal location into a grid location:
+    grid_goal = self.global_to_grid(goal_location)
+
 
 #### 5. Modify A* to include diagonal motion (or replace A* altogether)
 Minimal requirement here is to modify the code in planning_utils() to update the A* implementation to include diagonal motions on the grid that have a cost of sqrt(2), but more creative solutions are welcome. Explain the code you used to accomplish this step.
@@ -121,13 +134,12 @@ For this step you can use a collinearity test or ray tracing method like Bresenh
 
 
 
-Meanwhile, here's a picture of me flying through the trees!
-![Forest Flying](./misc/in_the_trees.png)
-
-
 ### Execute the flight
 #### 1. Does it work?
-It works!
+Yes, it works. I tried flying the quadrotor around manually before executing the motion
+planning script to ensure that my modifications to the start location worked successfully.
+I then used either Google Maps or the simulator itself to select a geodetic position to apply
+as the goal location and ran the planner in order to ensure that planning worked as expected.
 
 ### Double check that you've met specifications for each of the [rubric](https://review.udacity.com/#!/rubrics/1534/view) points.
 
