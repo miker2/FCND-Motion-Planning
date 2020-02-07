@@ -1,18 +1,9 @@
 import pkg_resources
 import sys
 
-try:
-    pkg_resources.require("networkx>=2.1")
-    import networkx as nx
-except:
-    !{sys.executable} -m pip install  networkx>=2.1
-    pkg_resources.require("networkx>=2.1")
-    import networkx as nx
-try:
-    import chaospy
-except:
-    !{sys.executable} -m pip install chaospy
-    import chaospy
+pkg_resources.require("networkx>=2.1")
+import networkx as nx
+import chaospy
 
 import time
 import numpy as np
@@ -188,17 +179,28 @@ class ProbabilisticRoadMap:
         nodes = self._sample_space(num_samples)
 
         t0 = time.time()
-        self._graph = create_graph(nodes, PL, max_conns=3, min_dist=5)
+        self._graph = self._create_graph(nodes, max_conns=3, min_dist=5)
         time_taken = time.time() - t0
         print("Graph creation took {0} seconds ...".format(time_taken))
         print("Graph has {0} edges.".format(len(self._graph.edges)))
 
     def plan_path(self, start, goal):
 
-        start = list(self._graph.nodes)[10]
-        k = np.random.randint(len(self._graph.nodes))
-        print(k, len(self._graph.nodes))
-        goal = list(self._graph.nodes)[k]
+        #start = list(self._graph.nodes)[10]
+        #k = np.random.randint(len(self._graph.nodes))
+        #print(k, len(self._graph.nodes))
+        #goal = list(self._graph.nodes)[k]
+
+        # Find the nearest node on the graph to the start position & add it
+        # to the graph:
+        near_start = self._find_nearest_point(start)
+        self._graph.add_edge(start, near_start,
+                             weight=LA.norm(np.array(start)-np.array(near_start)))
+
+        # Do the same for the goal position:
+        near_goal = self._find_nearest_point(goal)
+        self._graph.add_edge(goal, near_goal,
+                             weight=LA.norm(np.array(goal)-np.array(near_goal)))
 
         path, cost = a_star(lambda node: _graph_get_children(self._graph, node),
                             heuristic, start, goal)
@@ -259,11 +261,51 @@ class ProbabilisticRoadMap:
                     n2, d, min_dist))
                     continue
                 # Test the node for possible connectedness
-                if can_connect(n1, n2, self._PL):
+                if self._can_connect(n1, n2):
                     conns += 1
-                    g.add_edge(n1, n2, weight=LA.norm(np.array(n1)-np.array(n2)))
+                    #print("n1: {}, n2: {}".format(n1, n2))
+                    g.add_edge(tuple(n1), tuple(n2),
+                               weight=LA.norm(np.array(n1)-np.array(n2)))
                 if conns >= max_conns:
                     break
                 #if conns < max_conns:
                 #    print("For node", n1, "only found {0} connections.".format(conns))
         return g
+
+    def _can_connect(self, p1, p2):
+        l = LineString([p1, p2])
+        for poly, height in self._PL.polys_between(p1, p2):
+            if l.crosses(poly) and min(p1[2], p2[2]) <= height:
+                return False
+
+        return True
+
+    def _find_nearest_point(self, point):
+        ## Given a point (presumably the start or goal point, we want
+        ## to find the nearest collision free point on the graph. This
+        ## may be a node on the graph or it may be along an edge of the
+        ## graph.
+
+        ## If we wanted to find the nearest location on the graph, where
+        #  the graph is composed of nodes connected by edges in cartesian
+        #  space, then we might be able to do the following:
+        #  (1) Find the nearest node
+        #  (2) Find all neighbors of that node
+        #  (3) Construct the lines between the nearest node and each of
+        #      its neighbors
+        #  (4) Project the point onto each of the lines and find the
+        #      minimum distance point among the projections.
+
+
+        # If we just want to look only for the nearest node, we can do
+        # the following:
+        nodes = np.array(self._graph.nodes)
+        # Calculate the distance to all nodes:
+        dist = np.linalg.norm(nodes - np.array(point), axis=1)
+        # Find the index of the minimum distance and get the
+        # corresponding node
+        nearest_node = nodes[dist.argmin(),:]
+
+        return tuple(nearest_node.tolist())
+
+
