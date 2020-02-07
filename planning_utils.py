@@ -3,6 +3,11 @@ from queue import PriorityQueue
 import numpy as np
 
 
+# \todo(michael): Modify this so that the cells of the grid contain
+#                 the height information rather than a boolean
+#                 indicating occupied or not. This would make it
+#                 much easier to generate a boolean grid at any
+#                 height by doing something like: 'grid > 5'
 def create_grid(data, drone_altitude, safety_distance):
     """
     Returns a grid representation of a 2D configuration space
@@ -94,9 +99,31 @@ def valid_actions(grid, current_node):
 
     return valid
 
+def grid_get_children(grid, current_node):
+    children = []
+    for action in valid_actions(grid, current_node):
+        da = action.delta
+        children.append(((current_node[0] + da[0], current_node[1] + da[1]),
+                          action.cost))
+    return children
 
-def a_star(grid, h, start, goal):
 
+######################################################
+# Need to add an additional argument to the a_star
+# function that takes 'current_node' as an argument
+# and returns all valid children nodes & cost to them
+######################################################
+
+
+def a_star(get_children, h, start, goal):
+    ''' A* planner, that has the following interface:
+        'get_children' is a function that takes a node and returns
+                       all valid child nodes.
+        'h' is the heuristic function. It takes a node & goal position
+            and returns the estimated cost to the goal.
+        'start' is the starting node, a tuple.
+        'goal'  is the terminal node, a tuple.
+    '''
     path = []
     path_cost = 0
     queue = PriorityQueue()
@@ -105,32 +132,29 @@ def a_star(grid, h, start, goal):
 
     branch = {}
     found = False
-    
+
     while not queue.empty():
         item = queue.get()
         current_node = item[1]
         if current_node == start:
             current_cost = 0.0
-        else:              
+        else:
             current_cost = branch[current_node][0]
-            
-        if current_node == goal:        
+
+        if current_node == goal:
             print('Found a path.')
             found = True
             break
         else:
-            for action in valid_actions(grid, current_node):
-                # get the tuple representation
-                da = action.delta
-                next_node = (current_node[0] + da[0], current_node[1] + da[1])
-                branch_cost = current_cost + action.cost
-                queue_cost = branch_cost + h(next_node, goal)
-                
-                if next_node not in visited:                
-                    visited.add(next_node)               
-                    branch[next_node] = (branch_cost, current_node, action)
-                    queue.put((queue_cost, next_node))
-             
+            for child_node, cost in get_children(current_node):
+                branch_cost = current_cost + cost
+                queue_cost = branch_cost + h(child_node, goal)
+
+                if child_node not in visited:
+                    visited.add(child_node)
+                    branch[child_node] = (branch_cost, current_node)
+                    queue.put((queue_cost, child_node))
+
     if found:
         # retrace steps
         n = goal
@@ -143,9 +167,8 @@ def a_star(grid, h, start, goal):
     else:
         print('**********************')
         print('Failed to find a path!')
-        print('**********************') 
+        print('**********************')
     return path[::-1], path_cost
-
 
 
 def heuristic(position, goal_position):

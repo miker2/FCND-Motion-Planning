@@ -22,6 +22,8 @@ from shapely.geometry import Polygon, Point, LineString
 from shapely.geometry import box as Box
 from queue import PriorityQueue
 from sklearn.neighbors import KDTree
+from planning_utils import a_star, heuristic
+
 import pdb
 
 
@@ -29,16 +31,16 @@ class PolyLibrary:
     def __init__(self, data):
         self._poly_center = []
         self._poly_dict = dict()
-        
-        
+
+
         self._extract_polygons(data)
-        
+
         self._poly_tree = KDTree(self._poly_center)
 
     @property
     def polygons(self):
         return list(self._poly_dict.values())
-    
+
     def nearest_polys(self, point, num_polys=1):
         ''' This function returns the nearest N polygons to the 2D point '''
         idx = self._poly_tree.query([point], k=num_polys,
@@ -46,14 +48,14 @@ class PolyLibrary:
         polys = []
         for i in idx:
             polys.append(self.__getitem__(i))
-            
+
         return polys
-    
+
     def polys_between(self, p1, p2):
         ''' Given two points, find all of the polygons that could potentially
             be along the line between them.
             We'll do this by calculating the distance between the two points
-            and then using that as a search radius for polygons centered 
+            and then using that as a search radius for polygons centered
             around the two points. This will provide more polygons than necessary
             but will be far fewer than checking all of the polygons for collision
             '''
@@ -63,11 +65,11 @@ class PolyLibrary:
         polys = []
         for i in idx:
             polys.append(self.__getitem__(i))
-        
+
         return polys
 
     def collides(self, point):
-        ''' Check if the point collides with any of the 
+        ''' Check if the point collides with any of the
             polygons in the PolyLibrary
         '''
         # Determine whether the point collides
@@ -78,7 +80,7 @@ class PolyLibrary:
                 return True
         return False
 
-    def get_height_at_point(self, point):   
+    def get_height_at_point(self, point):
         # Returns the height of the polygon containing
         # the point, None otherwise.
         polygons = self.nearest_polys(point[:2])
@@ -89,9 +91,9 @@ class PolyLibrary:
 
     def __getitem__(self, idx):
         return self._poly_dict[self._poly_center[idx]]
-    
+
     def _extract_polygons(self, data):
-        # This method should return a dictionary with key-value pairs of 
+        # This method should return a dictionary with key-value pairs of
         # polygon_center : shapely polygon
 
         for i in range(data.shape[0]):
@@ -99,8 +101,8 @@ class PolyLibrary:
 
             # Extract the min & max extents of the obstacle and create a box shaped
             # polygon
-            p = Box(north-d_north, east-d_east, 
-                    north+d_north, east+d_east)        
+            p = Box(north-d_north, east-d_east,
+                    north+d_north, east+d_east)
 
             # Compute the height of the polygon
             height = alt+d_alt
@@ -108,60 +110,6 @@ class PolyLibrary:
             center = (north, east)
             self._poly_dict[center] = (p, height)
             self._poly_center.append(center)
-
-
-            
-def heuristic(n1, n2):
-    return LA.norm(np.array(n1) - np.array(n2))
-
-def a_star_graph(graph, h, start, goal):
-    """Modified A* to work with NetworkX graphs."""
-    
-    path = []
-    path_cost = 0
-    queue = PriorityQueue()
-    queue.put((0, start))
-    visited = set(start)
-
-    branch = {}
-    found = False
-    
-    while not queue.empty():
-        item = queue.get()
-        current_node = item[1]
-        if current_node == start:
-            current_cost = 0.0
-        else:              
-            current_cost = branch[current_node][0]
-            
-        if current_node == goal:        
-            print('Found a path.')
-            found = True
-            break
-        else:
-            for next_node in graph.neighbors(current_node):
-                branch_cost = current_cost + graph.get_edge_data(current_node,next_node)['weight']
-                queue_cost = branch_cost + h(next_node, goal)
-                
-                if next_node not in visited:                
-                    visited.add(next_node)               
-                    branch[next_node] = (branch_cost, current_node)
-                    queue.put((queue_cost, next_node))
-             
-    if found:
-        # retrace steps
-        n = goal
-        path_cost = branch[n][0]
-        path.append(goal)
-        while branch[n][1] != start:
-            path.append(branch[n][1])
-            n = branch[n][1]
-        path.append(branch[n][1])
-    else:
-        print('**********************')
-        print('Failed to find a path!')
-        print('**********************') 
-    return path[::-1], path_cost
 
 
 class CollidersData:
@@ -209,12 +157,20 @@ class CollidersData:
     @property
     def data(self):
         return self._data
-    
+
     def __getitem__(self, i, j):
         return self._data[i, j]
 
 
-class ProbabalisticRoadMap:
+# Helper function for ProbabilisticRoadMap graph search algorithm.
+def _graph_get_children(graph, current_node):
+    children = []
+    for next_node in graph.neighbors(current_node):
+        cost = graph.get_edge_data(current_node, next_node)['weight']
+        children.append((next_node, cost))
+    return children
+
+class ProbabilisticRoadMap:
     def __init__(self, data, num_samples=1000, zmin=0, zmax=-1):
 
         self._grid = CollidersData(data)
@@ -238,13 +194,14 @@ class ProbabalisticRoadMap:
         print("Graph has {0} edges.".format(len(self._graph.edges)))
 
     def plan_path(self, start, goal):
-        
+
         start = list(self._graph.nodes)[10]
         k = np.random.randint(len(self._graph.nodes))
         print(k, len(self._graph.nodes))
         goal = list(self._graph.nodes)[k]
 
-        path, cost = a_star_graph(g, heuristic, start, goal)
+        path, cost = a_star(lambda node: _graph_get_children(self._graph, node),
+                            heuristic, start, goal)
         print(len(path), path)
         return path
 
@@ -285,9 +242,9 @@ class ProbabalisticRoadMap:
 
     def _create_graph(self, nodes, max_conns=5, min_dist=5):
         g = nx.Graph()
-    
+
         p_tree = KDTree(nodes)
-    
+
         for n1 in nodes:
             # Here we'll look for the k nearest nodes, but only connect
             # up to 'max_conns' of them.
@@ -310,101 +267,3 @@ class ProbabalisticRoadMap:
                 #if conns < max_conns:
                 #    print("For node", n1, "only found {0} connections.".format(conns))
         return g
-
-
-
-
-    
-#=============================================================
-# Rework this into a function (or just have data be passed in)
-
-# filename = 'colliders.csv'
-# data = np.loadtxt(filename, delimiter=',', dtype='Float64', skiprows=2)
-
-# # Determine the extents of the map:
-# xmin = np.min(data[:, 0] - data[:, 3])
-# xmax = np.max(data[:, 0] + data[:, 3])
-# xrange = xmax - xmin
-
-# ymin = np.min(data[:, 1] - data[:, 4])
-# ymax = np.max(data[:, 1] + data[:, 4])
-# yrange = ymax - ymin
-
-# zmin = 3
-# # Limit the z axis for the visualization
-# zmax = 50 # alt. np.max(data[:,2] + data[:,5])
-# zrange = zmax-zmin
-
-# stat_str = "min = {0}, max = {1}, range = {2}\n"
-
-# print("X")
-# print(stat_str.format(xmin, xmax, xrange))
-
-# print("Y")
-# print(stat_str.format(ymin, ymax, yrange))
-
-# print("Z")
-# print(stat_str.format(zmin, zmax, zrange))
-
-
-
-# TODO: sample points randomly
-# then use KDTree to find nearest neighbor polygon
-# and test for collision
-
-# Generate a dictionary of polygons, using the center as the key:
-PL = PolyLibrary(data)
-
-# Generate a uniform random sampling of points.
-num_samples = 1000
-np.random.seed(0)  # Seed random so we always get the same data.
-                   # This can be changed later.
-
-# Generate some random 3-dimensional points
-#xvals = np.random.uniform(xmin, xmax, num_samples)
-#yvals = np.random.uniform(ymin, ymax, num_samples)
-#zvals = np.random.uniform(zmin, zmax, num_samples)
-
-#r_vals = np.random.rand(num_samples, 3)
-r_vals = chaospy.create_halton_samples(1000, 3).transpose()
-
-xvals = r_vals[:,0]*xrange + xmin
-yvals = r_vals[:,1]*yrange + ymin
-zvals = r_vals[:,2]*zrange + zmin
-
-samples = list(zip(xvals, yvals, zvals))
-
-t0 = time.time()
-nodes = []
-for point in samples:
-    # Find the nearest polygons:
-    #print(point)
-    #print(np.reshape(point[0:2],[1, -1]))
-    polys = PL.nearest_polys(point[:2])
-    h = get_point_height(polys, point)
-    nodes.append((point[0], point[1], h))
-    #if not collides(polys, point):
-    #    nodes.append(point)
-time_taken = time.time() - t0
-print("Collision checking took {0} seconds ...".format(time_taken))
-print("Kept {0} of {1} points".format(len(nodes), len(samples)))
-print("Average node coverage area: {0}".format((xrange*yrange)/len(nodes)))
-print("Grid center: ({0}, {1})".format(0.5*(xmax+xmin), 0.5*(ymax+ymin)))
-print("Sample point center: ({0})".format(np.average(np.array(nodes), axis=0)))
-search_radius = ((3*xrange*yrange*zrange)/(4*np.pi))**(1./3)
-print("Recommended search radius: {0}".format(search_radius))
-
-t0 = time.time()
-g = create_graph(nodes, PL, max_conns=3, min_dist=5)
-time_taken = time.time() - t0
-print("Graph creation took {0} seconds ...".format(time_taken))
-print("Graph has {0} edges.".format(len(g.edges)))
-
-
-start = list(g.nodes)[10]
-k = np.random.randint(len(g.nodes))
-print(k, len(g.nodes))
-goal = list(g.nodes)[k]
-
-path, cost = a_star_graph(g, heuristic, start, goal)
-print(len(path), path)
