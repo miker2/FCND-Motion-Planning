@@ -194,13 +194,15 @@ class ProbabilisticRoadMap:
         # Find the nearest node on the graph to the start position & add it
         # to the graph:
         near_start = self._find_nearest_point(start)
+        print('Adding starting edge to graph: {} <-> {}'.format(start, near_start))
         self._graph.add_edge(start, near_start,
                              weight=LA.norm(np.array(start)-np.array(near_start)))
 
         # Do the same for the goal position:
         near_goal = self._find_nearest_point(goal)
-        self._graph.add_edge(goal, near_goal,
-                             weight=LA.norm(np.array(goal)-np.array(near_goal)))
+        print('Adding goal edge to graph: {} <-> {}'.format(near_goal, goal))
+        self._graph.add_edge(near_goal, goal,
+                             weight=LA.norm(np.array(near_goal)-np.array(goal)))
 
         path, cost = a_star(lambda node: _graph_get_children(self._graph, node),
                             heuristic, start, goal)
@@ -215,8 +217,9 @@ class ProbabilisticRoadMap:
         # Points are sampled in the half-open set [0, 1) so we need to
         # perform an affine transform in order to get them into the
         # same coordinates as our grid.
-        xrange, yrange, zrange = self._grid.xrange, self._grid.yrange, self._grid.zrange
-        xmin, ymin, zmin = self._grid.xmin, self._grid.ymin, self._grid.zmin
+        xrange, yrange = self._grid.xrange, self._grid.yrange
+        zrange = self._zmax - self._zmin
+        xmin, ymin, zmin = self._grid.xmin, self._grid.ymin, self._zmin
         samples = (np.diag([xrange, yrange, zrange]).dot(r_vals) +
           np.array([[xmin, ymin, zmin]]).transpose()).transpose().tolist()
 
@@ -250,7 +253,7 @@ class ProbabilisticRoadMap:
         for n1 in nodes:
             # Here we'll look for the k nearest nodes, but only connect
             # up to 'max_conns' of them.
-            dist, node_idx = p_tree.query([n1], k=15)
+            dist, node_idx = p_tree.query([n1], k=20)
             conns = 0
             for idx, d in zip(node_idx[0],dist[0]):
                 n2 = nodes[idx]

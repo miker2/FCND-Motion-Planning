@@ -8,6 +8,7 @@ import numpy as np
 from bresenham import bresenham
 
 from planning_utils import a_star, heuristic, create_grid, grid_get_children
+from prm import ProbabilisticRoadMap
 from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
@@ -70,6 +71,8 @@ class MotionPlanning(Drone):
         self.flight_state = States.MANUAL
 
         self._grid_offset = (0, 0)
+
+        self._use_prm = True
 
         # register all your callbacks here
         self.register_callback(MsgID.LOCAL_POSITION, self.local_position_callback)
@@ -210,37 +213,50 @@ class MotionPlanning(Drone):
         grid_start = self.local_to_grid(self.local_position)
 
         # Select a random goal location from Google Maps (using longitude/latitude):
-        goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
+        #goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
         goal_location = (-122.398718, 37.792104, 0)  # temporary closer spot
 
-        # Convert the lat/lon goal location into a grid location:
-        grid_goal = self.global_to_grid(goal_location)
+        if not self._use_prm:
+            # Convert the lat/lon goal location into a grid location:
+            grid_goal = self.global_to_grid(goal_location)
 
-        #grid_goal = self.local_to_grid((-30, 60))
+            #grid_goal = self.local_to_grid((-30, 60))
 
-        # Run A* to find a path from start to goal
-        # TODO: add diagonal motions with a cost of sqrt(2) to your A* implementation
-        # or move to a different search space such as a graph (not done here)
-        print('Local Start and Goal: ', grid_start, grid_goal)
-        path, _ = a_star(lambda node : grid_get_children(grid, node), heuristic,
-                         grid_start, grid_goal)
+            # Run A* to find a path from start to goal
+            print('Local Start and Goal: ', grid_start, grid_goal)
+            path, _ = a_star(lambda node : grid_get_children(grid, node), heuristic,
+                             grid_start, grid_goal)
 
-        print('Found a path with {} nodes.'.format(len(path)))
-        # TODO: prune path to minimize number of waypoints
-        # TODO (if you're feeling ambitious): Try a different approach altogether!
+            print('Found a path with {} nodes.'.format(len(path)))
+            # TODO: prune path to minimize number of waypoints
+            # TODO (if you're feeling ambitious): Try a different approach altogether!
 
-        pruned_path = _prune_redundant(path, grid)
-        print(pruned_path)
-        print('pruned path has {} waypoints.'.format(len(pruned_path)))
+            pruned_path = _prune_redundant(path, grid)
+            print(pruned_path)
+            print('pruned path has {} waypoints.'.format(len(pruned_path)))
 
-        path = pruned_path
+            path = pruned_path
 
-        # Convert path to waypoints
-        waypoints = [[p[0] + self._grid_offset[0], p[1] + self._grid_offset[1],
-                      TARGET_ALTITUDE, 0] for p in path]
-        print(waypoints)
-        _calculate_waypoint_heading(waypoints)
-        print(waypoints)
+            # Convert path to waypoints
+            waypoints = [[p[0] + self._grid_offset[0], p[1] + self._grid_offset[1],
+                          TARGET_ALTITUDE, 0] for p in path]
+            print(waypoints)
+            _calculate_waypoint_heading(waypoints)
+            print(waypoints)
+        else:  # Use the PRM to plan a path.
+
+            local_start = tuple(self.local_position.tolist());
+            local_goal = tuple(global_to_local(goal_location, self.global_home).tolist())
+            print('start: {}, goal: {}'.format(local_start, local_goal))
+
+            prm = ProbabilisticRoadMap(data, 500, TARGET_ALTITUDE, TARGET_ALTITUDE)
+
+            path = prm.plan_path(local_start, local_goal)
+
+            waypoints = [[p[0], p[1], TARGET_ALTITUDE, 0] for p in path]
+            print(waypoints)
+            _calculate_waypoint_heading(waypoints)
+            print(waypoints)
 
         # Set self.waypoints
         self.waypoints = waypoints
