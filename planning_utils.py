@@ -8,11 +8,13 @@ import numpy as np
 #                 indicating occupied or not. This would make it
 #                 much easier to generate a boolean grid at any
 #                 height by doing something like: 'grid > 5'
-def create_grid(data, drone_altitude, safety_distance):
+#  We can use np.maximum(a1, a2) to compare two arrays.
+#  The procedure would be to get the chunk of the 'grid' array
+#  and compare that to the new obstacle height.
+def create_2_5d_map(data, safety_distance):
     """
-    Returns a grid representation of a 2D configuration space
-    based on given obstacle data, drone altitude and safety distance
-    arguments.
+    Returns a 2.5D grid representation of a configuration space
+    based on given obstacle data and safety distance arguments.
     """
 
     # minimum and maximum north coordinates
@@ -34,16 +36,29 @@ def create_grid(data, drone_altitude, safety_distance):
     # Populate the grid with obstacles
     for i in range(data.shape[0]):
         north, east, alt, d_north, d_east, d_alt = data[i, :]
-        if alt + d_alt + safety_distance > drone_altitude:
-            obstacle = [
-                int(np.clip(north - d_north - safety_distance - north_min, 0, north_size-1)),
-                int(np.clip(north + d_north + safety_distance - north_min, 0, north_size-1)),
-                int(np.clip(east - d_east - safety_distance - east_min, 0, east_size-1)),
-                int(np.clip(east + d_east + safety_distance - east_min, 0, east_size-1)),
-            ]
-            grid[obstacle[0]:obstacle[1]+1, obstacle[2]:obstacle[3]+1] = 1
+        height =  alt + d_alt + safety_distance
+        obstacle = [
+            int(np.clip(north - d_north - safety_distance - north_min, 0, north_size-1)),
+            int(np.clip(north + d_north + safety_distance - north_min, 0, north_size-1)),
+            int(np.clip(east - d_east - safety_distance - east_min, 0, east_size-1)),
+            int(np.clip(east + d_east + safety_distance - east_min, 0, east_size-1)),
+        ]
+        tmp = np.ones((obstacle[1]-obstacle[0]+1, obstacle[3]-obstacle[2]+1)) * height
+        nslice = slice(obstacle[0], obstacle[1]+1)
+        eslice = slice(obstacle[2], obstacle[3]+1)
+        grid[nslice, eslice] = np.maximum(tmp, grid[nslice, eslice])
 
     return grid, (int(north_min), int(east_min))
+
+def create_grid(data, drone_altitude, safety_distance):
+    """
+    Returns a grid representation of a 2D configuration space
+    based on given obstacle data, drone altitude and safety distance
+    arguments.
+    """
+    map_2_5d, ne_min = create_2_5d_map(data, safety_distance)
+
+    return map_2_5d > drone_altitude, ne_min
 
 
 # Assume all actions cost the same.
