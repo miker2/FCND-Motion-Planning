@@ -209,10 +209,10 @@ class ProbabilisticRoadMap:
         print(len(path), path)
         return path
 
-    def _sample_space(self, num_samples):
+    def _sample_space(self, num_samples=1000):
         # Use a quasi-random sampling technique which has been shown to
         # produce slightly better coverage of the space
-        r_vals = chaospy.create_halton_samples(1000, 3)
+        r_vals = chaospy.create_halton_samples(num_samples, 3)
 
         # Points are sampled in the half-open set [0, 1) so we need to
         # perform an affine transform in order to get them into the
