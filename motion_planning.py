@@ -8,6 +8,7 @@ import numpy as np
 from bresenham import bresenham
 
 from planning_utils import a_star, heuristic, create_grid, grid_get_children
+from planning_utils import create_2p5d_map, grid_3d_get_children
 from prm import ProbabilisticRoadMap
 from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection
@@ -34,10 +35,10 @@ def _prune_redundant(path, grid):
         while j < len(path):
             pi = pruned_path[-1]
             pe = path[j]
-            print('Checking {} and {} for collisions.'.format(pi, pe))
+            #print('Checking {} and {} for collisions.'.format(pi, pe))
             ray = bresenham(pi[0], pi[1], int(pe[0]), int(pe[1]))
             redundant = (np.sum([grid[ri,rj] for ri, rj in ray]) == 0)
-            print('j: {}, ray: {}, redundant: {}'.format(j, ray, redundant))
+            #print('j: {}, ray: {}, redundant: {}'.format(j, ray, redundant))
             if redundant:
                 j += 1
             else:
@@ -72,7 +73,7 @@ class MotionPlanning(Drone):
 
         self._grid_offset = (0, 0)
 
-        self._use_prm = True
+        self._use_prm = False
 
         # register all your callbacks here
         self.register_callback(MsgID.LOCAL_POSITION, self.local_position_callback)
@@ -84,7 +85,13 @@ class MotionPlanning(Drone):
             if -1.0 * self.local_position[2] > 0.95 * self.target_position[2]:
                 self.waypoint_transition()
         elif self.flight_state == States.WAYPOINT:
-            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < 1.0:
+            if len(self.waypoints) == 0:
+                # Narrower tolerance for terminal waypoint.
+                radius = 0.5
+            else:
+                # Tolerate a larger distance for intermediate waypoints.
+                radius = 2.0
+            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < radius:
                 if len(self.waypoints) > 0:
                     self.waypoint_transition()
                 else:
@@ -202,35 +209,47 @@ class MotionPlanning(Drone):
         # Read in obstacle map
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
-        # Define a grid for a particular altitude and safety margin around obstacles
-        grid, self._grid_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
-        print("North offset = {0}, east offset = {1}".format(self._grid_offset[0],
-                                                             self._grid_offset[1]))
-
-        # Define starting point on the grid. The 'local_position' is relative to the grid center
-        # So we want to set the starting position on the grid equal to our current position,
-        # offset by the grid offset.
-        grid_start = self.local_to_grid(self.local_position)
-
         # Select a random goal location from Google Maps (using longitude/latitude):
         #goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
         goal_location = (-122.398718, 37.792104, 0)  # temporary closer spot
 
         if not self._use_prm:
+            # Define a grid for a particular altitude and safety margin around obstacles
+            map_2p5d, self._grid_offset = create_2p5d_map(data, SAFETY_DISTANCE)
+            print("North offset = {0}, east offset = {1}".format(self._grid_offset[0],
+                                                                 self._grid_offset[1]))
+
+            # Define starting point on the grid. The 'local_position' is relative to the
+            # grid center, so we want to set the starting position on the grid equal to
+            # our current position, offset by the grid offset.
+            grid_start = self.local_to_grid(self.local_position)
+
             # Convert the lat/lon goal location into a grid location:
             grid_goal = self.global_to_grid(goal_location)
 
             #grid_goal = self.local_to_grid((-30, 60))
+            #grid_goal = tuple(np.random.randint(min(map_2p5d.shape), size=(1, 2)).tolist()[0])
+
+            # Make sure that the start and goal locations are achievable!
+            height_start = map_2p5d[grid_start]
+            height_goal = map_2p5d[grid_goal]
+            print('start height: {}, goal height: {}'.format(height_start, height_goal))
+
+            # Find the maximum height between the target height & the start/goal height
+            height = max(max(height_start, height_goal), TARGET_ALTITUDE)
+
+            # Generate the grid for the given height.
+            grid = map_2p5d > height
+
+            get_children = lambda node: grid_get_children(grid, node)
 
             # Run A* to find a path from start to goal
             print('Local Start and Goal: ', grid_start, grid_goal)
-            path, _ = a_star(lambda node : grid_get_children(grid, node), heuristic,
-                             grid_start, grid_goal)
+            path, _ = a_star(get_children, heuristic, grid_start, grid_goal)
 
             print('Found a path with {} nodes.'.format(len(path)))
-            # TODO: prune path to minimize number of waypoints
-            # TODO (if you're feeling ambitious): Try a different approach altogether!
 
+            # Prune path to minimize number of waypoints
             pruned_path = _prune_redundant(path, grid)
             print(pruned_path)
             print('pruned path has {} waypoints.'.format(len(pruned_path)))
@@ -239,7 +258,8 @@ class MotionPlanning(Drone):
 
             # Convert path to waypoints
             waypoints = [[p[0] + self._grid_offset[0], p[1] + self._grid_offset[1],
-                          TARGET_ALTITUDE, 0] for p in path]
+                          height, 0] for p in path]
+
             print(waypoints)
             _calculate_waypoint_heading(waypoints)
             print(waypoints)

@@ -11,7 +11,7 @@ import numpy as np
 #  We can use np.maximum(a1, a2) to compare two arrays.
 #  The procedure would be to get the chunk of the 'grid' array
 #  and compare that to the new obstacle height.
-def create_2_5d_map(data, safety_distance):
+def create_2p5d_map(data, safety_distance):
     """
     Returns a 2.5D grid representation of a configuration space
     based on given obstacle data and safety distance arguments.
@@ -56,13 +56,13 @@ def create_grid(data, drone_altitude, safety_distance):
     based on given obstacle data, drone altitude and safety distance
     arguments.
     """
-    map_2_5d, ne_min = create_2_5d_map(data, safety_distance)
+    map_2p5d, ne_min = create_2p5d_map(data, safety_distance)
 
-    return map_2_5d > drone_altitude, ne_min
+    return map_2p5d > drone_altitude, ne_min
 
 
 # Assume all actions cost the same.
-class Action(Enum):
+class Action2D(Enum):
     """
     An action is represented by a 3 element tuple.
 
@@ -94,15 +94,13 @@ def valid_actions(grid, current_node):
     """
     Returns a list of valid actions given a grid and current node.
     """
-    #valid = [Action.UP, Action.LEFT, Action.RIGHT, Action.DOWN]
-    valid = [a for a in Action]
+    valid = [a for a in Action2D]
     n, m = grid.shape[0] - 1, grid.shape[1] - 1
     x, y = current_node
 
     # check if the node is off the grid or
     # it's an obstacle
-
-    for a in Action:
+    for a in Action2D:
         new_x = x + a.delta[0]
         new_y = y + a.delta[1]
         # Check if the node is off the grid
@@ -123,22 +121,87 @@ def grid_get_children(grid, current_node):
     return children
 
 
-######################################################
-# Need to add an additional argument to the a_star
-# function that takes 'current_node' as an argument
-# and returns all valid children nodes & cost to them
-######################################################
+class ActionNED(Enum):
+    """
+    An action is represented by a 4 element tuple.
+
+    The first 3 values are the delta of the action relative
+    to the current grid position. The fourth and final value
+    is the cost of performing the action.
+    """
+
+    # Movements in the NE plane
+    NORTH = (1, 0, 0, 1)
+    NORTHEAST = (1, 1, 0, np.sqrt(2))
+    EAST = (0, 1, 0, 1)
+    SOUTHEAST = (-1, 1, 0, np.sqrt(2))
+    SOUTH = (-1, 0, 0, 1)
+    SOUTHWEST = (-1, -1, 0, np.sqrt(2))
+    WEST = (0, -1, 0, 1)
+    NORTHWEST = (1, -1, 0, np.sqrt(2))
+    # Movements downward
+    DN = (0, 0, 1, 1)
+    DN_NORTH = (1, 0, 1, np.sqrt(2))
+    DN_NORTHEAST = (1, 1, 1, np.sqrt(3))
+    DN_EAST = (0, 1, 1, np.sqrt(2))
+    DN_SOUTHEAST = (-1, 1, 1, np.sqrt(3))
+    DN_SOUTH = (-1, 0, 1, np.sqrt(2))
+    DN_SOUTHWEST = (-1, -1, 1, np.sqrt(3))
+    DN_WEST = (0, -1, 1, np.sqrt(2))
+    DN_NORTHWEST = (1, -1, 1, np.sqrt(3))
+    # Movements upward
+    UP = (0, 0, -1, 1)
+    UP_NORTH = (1, 0, -1, np.sqrt(2))
+    UP_NORTHEAST = (1, 1, -1, np.sqrt(3))
+    UP_EAST = (0, 1, -1, np.sqrt(2))
+    UP_SOUTHEAST = (-1, 1, -1, np.sqrt(3))
+    UP_SOUTH = (-1, 0, -1, np.sqrt(2))
+    UP_SOUTHWEST = (-1, -1, -1, np.sqrt(3))
+    UP_WEST = (0, -1, -1, np.sqrt(2))
+    UP_NORTHWEST = (1, -1, -1, np.sqrt(3))
+
+    @property
+    def cost(self):
+        return self.value[3]
+
+    @property
+    def delta(self):
+        return (self.value[0], self.value[1], self.value[2])
+
+
+def grid_3d_get_children(map_2p5d, current_node):
+    valid = [a for a in ActionNED]
+    n, m = map_2p5d.shape[0] - 1, map_2p5d.shape[1] - 1
+    x, y, z = current_node
+
+    children = []
+    for a in ActionNED:
+        new_x = x + a.delta[0]
+        new_y = y + a.delta[1]
+        new_z = z + a.delta[2]
+
+        # Check if the node is off the grid
+        if new_x < 0 or new_x > n or new_y < 0 or new_y > m or new_z < 0:
+            continue
+        if map_2p5d[new_x, new_y] > new_z:
+            continue
+
+        # If we've gotten here then the new point is valid
+        children.append(((new_x, new_y, new_z), a.cost))
+
+    return children
 
 
 def a_star(get_children, h, start, goal):
-    ''' A* planner, that has the following interface:
+    """
+    A* planner, that has the following interface:
         'get_children' is a function that takes a node and returns
                        all valid child nodes.
         'h' is the heuristic function. It takes a node & goal position
             and returns the estimated cost to the goal.
         'start' is the starting node, a tuple.
         'goal'  is the terminal node, a tuple.
-    '''
+    """
     path = []
     path_cost = 0
     queue = PriorityQueue()
