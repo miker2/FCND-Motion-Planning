@@ -1,21 +1,17 @@
 import pkg_resources
-import sys
+import time
 
 pkg_resources.require("networkx>=2.1")
 import networkx as nx
 import chaospy
 
-import time
 import numpy as np
 import numpy.linalg as LA
-import matplotlib.pyplot as plt
-from shapely.geometry import Polygon, Point, LineString
+from shapely.geometry import Point, LineString
 from shapely.geometry import box as Box
-from queue import PriorityQueue
 from sklearn.neighbors import KDTree
-from planning_utils import a_star, heuristic
 
-import pdb
+from planning_utils import a_star, heuristic
 
 
 class PolyLibrary:
@@ -144,6 +140,14 @@ class CollidersData:
     @property
     def zrange(self):
         return self._zrange
+
+    @property
+    def min(self):
+        return (self.xmin, self.ymin, self.zmin)
+
+    @property
+    def bounds2D(self):
+        return (self.xmin, self.ymin, self.xmin+self.xrange, self.ymin+self.yrange)
 
     @property
     def data(self):
