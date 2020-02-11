@@ -10,6 +10,7 @@ from bresenham import bresenham
 from planning_utils import a_star, heuristic, create_grid, grid_get_children
 from planning_utils import create_2p5d_map, grid_3d_get_children
 from prm import ProbabilisticRoadMap
+from voronoi_planner import VoronoiPlanner
 from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
@@ -74,6 +75,7 @@ class MotionPlanning(Drone):
         self._grid_offset = (0, 0)
 
         self._use_prm = False
+        self._use_voronoi = True
 
         # register all your callbacks here
         self.register_callback(MsgID.LOCAL_POSITION, self.local_position_callback)
@@ -213,7 +215,40 @@ class MotionPlanning(Drone):
         #goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
         goal_location = (-122.398718, 37.792104, 0)  # temporary closer spot
 
-        if not self._use_prm:
+        if self._use_voronoi or self._use_prm:
+            local_start = tuple(self.local_position.tolist());
+            local_goal = tuple(global_to_local(goal_location, self.global_home).tolist())
+            print('start: {}, goal: {}'.format(local_start, local_goal))
+
+            if self._use_prm:
+                planner = ProbabilisticRoadMap(data, 500, TARGET_ALTITUDE, TARGET_ALTITUDE)
+            else:
+                planner = VoronoiPlanner(data, SAFETY_DISTANCE)
+                planner.create_voronoi_grid(TARGET_ALTITUDE)
+
+            path = planner.plan_path(local_start, local_goal)
+
+            if self._use_voronoi:
+                # This makes no sense, but if these values aren't 'int' types then
+                # The sending of waypoints doesn't seem to work and the quad doesn't
+                # take off and fly.
+                self._grid_offset = (int(planner._CD.xmin), int(planner._CD.ymin))
+                print("Pruning path!")
+                grid_path = [self.local_to_grid(p) for p in path]
+                print("grid_path:", grid_path)
+                pruned_path = _prune_redundant(grid_path, planner._grid)
+                print(pruned_path)
+                print('pruned path has {} waypoints.'.format(len(pruned_path)))
+
+                path = [[p[0] + self._grid_offset[0], p[1] + self._grid_offset[1]] for \
+                        p in pruned_path]
+
+            waypoints = [[p[0], p[1], TARGET_ALTITUDE, 0] for p in path]
+            print("Waypoints, no heading: ", waypoints)
+            _calculate_waypoint_heading(waypoints)
+            print("Updated waypoints: ", waypoints)
+
+        else:  # Use grid-based A* to plan a path
             # Define a grid for a particular altitude and safety margin around obstacles
             map_2p5d, self._grid_offset = create_2p5d_map(data, SAFETY_DISTANCE)
             print("North offset = {0}, east offset = {1}".format(self._grid_offset[0],
@@ -263,20 +298,7 @@ class MotionPlanning(Drone):
             print(waypoints)
             _calculate_waypoint_heading(waypoints)
             print(waypoints)
-        else:  # Use the PRM to plan a path.
 
-            local_start = tuple(self.local_position.tolist());
-            local_goal = tuple(global_to_local(goal_location, self.global_home).tolist())
-            print('start: {}, goal: {}'.format(local_start, local_goal))
-
-            prm = ProbabilisticRoadMap(data, 500, TARGET_ALTITUDE, TARGET_ALTITUDE)
-
-            path = prm.plan_path(local_start, local_goal)
-
-            waypoints = [[p[0], p[1], TARGET_ALTITUDE, 0] for p in path]
-            print(waypoints)
-            _calculate_waypoint_heading(waypoints)
-            print(waypoints)
 
         # Set self.waypoints
         self.waypoints = waypoints
