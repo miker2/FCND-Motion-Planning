@@ -192,6 +192,14 @@ def grid_3d_get_children(map_2p5d, current_node):
     return children
 
 
+# Helper function for graph based search algorithm.
+def graph_get_children(graph, current_node):
+    children = []
+    for next_node in graph.neighbors(current_node):
+        cost = graph.get_edge_data(current_node, next_node)['weight']
+        children.append((next_node, cost))
+    return children
+
 def a_star(get_children, h, start, goal):
     """
     A* planner, that has the following interface:

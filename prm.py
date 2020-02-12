@@ -11,7 +11,7 @@ from shapely.geometry import Point, LineString
 from shapely.geometry import box as Box
 from sklearn.neighbors import KDTree
 
-from planning_utils import a_star, heuristic
+from planning_utils import a_star, heuristic, graph_get_children
 
 
 class PolyLibrary:
@@ -157,14 +157,6 @@ class CollidersData:
         return self._data[i, j]
 
 
-# Helper function for ProbabilisticRoadMap graph search algorithm.
-def _graph_get_children(graph, current_node):
-    children = []
-    for next_node in graph.neighbors(current_node):
-        cost = graph.get_edge_data(current_node, next_node)['weight']
-        children.append((next_node, cost))
-    return children
-
 class ProbabilisticRoadMap:
     def __init__(self, data, num_samples=1000, zmin=0, zmax=-1):
 
@@ -208,7 +200,7 @@ class ProbabilisticRoadMap:
         self._graph.add_edge(near_goal, goal,
                              weight=LA.norm(np.array(near_goal)-np.array(goal)))
 
-        path, cost = a_star(lambda node: _graph_get_children(self._graph, node),
+        path, cost = a_star(lambda node: graph_get_children(self._graph, node),
                             heuristic, start, goal)
         print(len(path), path)
         return path

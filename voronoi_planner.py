@@ -15,16 +15,8 @@ from planning_utils import create_grid
 pkg_resources.require("networkx>=2.1")
 import networkx as nx
 
-from planning_utils import a_star, heuristic
+from planning_utils import a_star, heuristic, graph_get_children
 
-
-# Helper function for ProbabilisticRoadMap graph search algorithm.
-def _graph_get_children(graph, current_node):
-    children = []
-    for next_node in graph.neighbors(current_node):
-        cost = graph.get_edge_data(current_node, next_node)['weight']
-        children.append((next_node, cost))
-    return children
 
 class VoronoiPlanner:
 
@@ -148,7 +140,7 @@ class VoronoiPlanner:
         self._graph.add_edge(near_goal, goal,
                              weight=LA.norm(np.array(near_goal)-np.array(goal)))
 
-        path, cost = a_star(lambda node: _graph_get_children(self._graph, node),
+        path, cost = a_star(lambda node: graph_get_children(self._graph, node),
                             heuristic, start, goal)
         print(len(path), path)
         return path
