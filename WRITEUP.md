@@ -13,9 +13,9 @@
 8. Congratulations!  Your Done!
 
 ---
-## Writeup / README
+## Writeup
 
-### Explain the Starter Code
+### The Starter Code
 
 #### 1. `motion_planning.py`
 
@@ -26,7 +26,8 @@ The key differences between `motion_planning.py` and `backyard_flyer.py` is that
 `motion_planning.py` has an added state as part of the finite state machine that
 allows for planning a path through the urban environment. While the path that is
 planned in this skeleton implementation is quite simple, all of the necessary
-code is present. One just needs to modify the body of the `plan_path` method.
+code is present to plan more complicated paths. One just needs to modify the body
+of the `plan_path` method.
 
 #### 2. `planning_utilities.py`
 
@@ -127,7 +128,66 @@ And the line of code I added is the following:
 
 
 #### 5. Modify A* to include diagonal motion (or replace A* altogether)
-Minimal requirement here is to modify the code in planning_utils() to update the A* implementation to include diagonal motions on the grid that have a cost of sqrt(2), but more creative solutions are welcome. Explain the code you used to accomplish this step.
+I investigated a variety of different planning methods in order to solve the planning
+problem. I started by extending the grid-based A* planner to include diagonal motions
+that have a cost of sqrt(2). This worked fine, but seemed to take a long time to find
+a plan for goals far from the start location (as expected).
+
+I knew it would be an even slower approach, but I experimented with a 3D voxel-based
+A* planner by adding additional actions that allowed upward and downward motion as
+well. This resulted in a total of 26 possible actions (connecting all adjacent voxels.
+While the search space was expanded considerably leading to the possibility of flying
+over buildings instead of just around them, the planning time was prohibitively long.
+The good thing was that it was easy to expand from 2D to 3D grid based planning by
+extending the `Action` class. I actually renamed the existing `Action` class to
+`Action2D` and created a new class for the 3D version of the planner called `ActionNED`
+for planning in the 3D North-East-Down frame.
+
+Another approach I took to the planning problem was implementing a Probabilistic Road
+Map planner. I did this by sampling the configuration space in three dimensions (only
+accounting for translation motion and ignoring rotational motion). I then followed the
+process of pruning nodes that weren't in free space, connecting nodes to create edges
+in the graph, checking those edges for collision and building up the graph. While this
+approach seemed quite fast when running in a test environment (see
+`ProbabilisticRoadMap_test.ipynb`) the plannings took almost 100x longer to generate
+when run from inside the simulator. I never could figure out what was causing this
+slowdown.
+
+Finally, I settled on using a graph based planner based on Voronoi regions to solve
+the planning problem. I created the Voronoi graph, pruned edges in collision with the
+obstacle map and then build a graph using the `networkx` package. The planner seems
+to perform quite well in the simulator.
+
+One thing that I did to improve the interface to the `a_star` method was providing a
+method is an input argument that given a node returns all children of that node with
+the associated cost of arriving at that child. For grid based planners, this method
+uses the `Action` class to generate children nodes. For graph based planners, this
+method uses the `networkx` interface to get all of the neighboring nodes and their
+associated edge cost. An example of what the grid based method looks like is the
+following:
+
+    def grid_get_children(grid, current_node):
+        children = []
+        for action in valid_actions(grid, current_node):
+            da = action.delta
+            children.append(((current_node[0] + da[0], current_node[1] + da[1]),
+                              action.cost))
+        return children
+
+And for the graph based planner this:
+
+    def _graph_get_children(graph, current_node):
+        children = []
+        for next_node in graph.neighbors(current_node):
+            cost = graph.get_edge_data(current_node, next_node)['weight']
+            children.append((next_node, cost))
+        return children
+
+Each of these methods is then wrapped in a `lambda` and passed into the `a_star` method
+as follows:
+
+    get_children = lambda node: _graph_get_children(my_graph, node)
+		plan = a_star(get_children, heuristic, start_node, goal_node)
 
 #### 6. Cull waypoints
 For this step you can use a collinearity test or ray tracing method like Bresenham. The idea is simply to prune your path of unnecessary waypoints. Explain the code you used to accomplish this step.
