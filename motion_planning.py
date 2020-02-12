@@ -57,6 +57,11 @@ class States(Enum):
     DISARMING = auto()
     PLANNING = auto()
 
+class Planner(Enum):
+    GRID_2D = auto()
+    #GRID_3D = auto() # Too slow, so don't use this one.
+    PRM = auto()
+    VORONOI = auto()
 
 class MotionPlanning(Drone):
 
@@ -73,8 +78,7 @@ class MotionPlanning(Drone):
 
         self._grid_offset = (0, 0)
 
-        self._use_prm = False
-        self._use_voronoi = True
+        self._planner = Planner.VORONOI
 
         # register all your callbacks here
         self.register_callback(MsgID.LOCAL_POSITION, self.local_position_callback)
@@ -212,25 +216,40 @@ class MotionPlanning(Drone):
         goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
         #goal_location = (-122.398718, 37.792104, 0)  # temporary closer spot
 
-        if self._use_voronoi or self._use_prm:
+        # Define a grid for a particular altitude and safety margin around obstacles
+        # \TODO: This is a bit inefficient because the Voronoi planner will also create
+        #        a grid, but we need the grid here so we can get the '_grid_offset' and
+        #        query the grid for a height.
+        map_2p5d, self._grid_offset = create_2p5d_map(data, SAFETY_DISTANCE)
+        print("North offset = {0}, east offset = {1}".format(self._grid_offset[0],
+                                                                 self._grid_offset[1]))
+
+        print("Planning using {} algorithm.".format(self._planner.name))
+        if self._planner == Planner.PRM or self._planner == Planner.VORONOI:
             local_start = tuple(self.local_position.tolist())
             local_goal = tuple(global_to_local(goal_location, self.global_home).tolist())
             print('start: {}, goal: {}'.format(local_start, local_goal))
 
-            if self._use_prm:
+            if self._planner == Planner.PRM:
                 planner = ProbabilisticRoadMap(data, 500, TARGET_ALTITUDE, TARGET_ALTITUDE)
             else:
                 planner = VoronoiPlanner(data, SAFETY_DISTANCE)
-                planner.create_voronoi_grid(TARGET_ALTITUDE)
+                # Calculate the grid based start & goal coordinates so we can determine
+                # the target altitude (in case the drone is starting or landing on top
+                # of a building.
+                grid_start = self.local_to_grid(local_start)
+                grid_goal = self.local_to_grid(local_goal)
+                target_altitude_ = max(TARGET_ALTITUDE,
+                                       max(map_2p5d[grid_start], map_2p5d[grid_goal]))
+                planner.create_voronoi_grid(target_altitude_)
 
             path = planner.plan_path(local_start, local_goal)
 
-            if self._use_voronoi:
+            if self._planner == Planner.VORONOI:
                 # This makes no sense, but if these values aren't 'int' types then
                 # The sending of waypoints doesn't seem to work and the quad doesn't
                 # take off and fly. Also, this access to private internal members
                 # is a bit of a hack!
-                self._grid_offset = (int(planner._CD.xmin), int(planner._CD.ymin))
                 print("Pruning path!")
                 grid_path = [self.local_to_grid(p) for p in path]
                 print("grid_path:", grid_path)
@@ -246,11 +265,8 @@ class MotionPlanning(Drone):
             _calculate_waypoint_heading(waypoints)
             print("Updated waypoints: ", waypoints)
 
-        else:  # Use grid-based A* to plan a path
-            # Define a grid for a particular altitude and safety margin around obstacles
-            map_2p5d, self._grid_offset = create_2p5d_map(data, SAFETY_DISTANCE)
-            print("North offset = {0}, east offset = {1}".format(self._grid_offset[0],
-                                                                 self._grid_offset[1]))
+        elif self._planner == Planner.GRID_2D:
+            # Use grid-based A* to plan a path
 
             # Define starting point on the grid. The 'local_position' is relative to the
             # grid center, so we want to set the starting position on the grid equal to
@@ -296,6 +312,9 @@ class MotionPlanning(Drone):
             print(waypoints)
             _calculate_waypoint_heading(waypoints)
             print(waypoints)
+        else:
+            print("Unknown planner type: {}. Aborting!".format(self._planner))
+            self.landing_transition()
 
 
         # Set self.waypoints

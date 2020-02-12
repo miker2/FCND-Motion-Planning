@@ -14,6 +14,11 @@ from planning_utils import a_star, heuristic, graph_get_children
 
 
 class PolyLibrary:
+    """
+    PolyLibrary is an interface class to the underlying collision regions of the map.
+    It provides an easy interface for finding the height of an object at a point,
+    The polygons between any two points, and collision checking of a specified point.
+    """
     def __init__(self, data):
         self._poly_center = []
         self._poly_dict = dict()
@@ -25,10 +30,11 @@ class PolyLibrary:
 
     @property
     def polygons(self):
+        """ Provides the list of shapely polygon objects in the library """
         return list(self._poly_dict.values())
 
     def nearest_polys(self, point, num_polys=1):
-        ''' This function returns the nearest N polygons to the 2D point '''
+        """ This function returns the nearest N polygons to the 2D point """
         idx = self._poly_tree.query([point], k=num_polys,
                                     return_distance=False)[0]
         polys = []
@@ -38,13 +44,14 @@ class PolyLibrary:
         return polys
 
     def polys_between(self, p1, p2):
-        ''' Given two points, find all of the polygons that could potentially
-            be along the line between them.
-            We'll do this by calculating the distance between the two points
-            and then using that as a search radius for polygons centered
-            around the two points. This will provide more polygons than necessary
-            but will be far fewer than checking all of the polygons for collision
-            '''
+        """
+        Given two points, find all of the polygons that could potentially
+        be along the line between them.
+        We'll do this by calculating the distance between the two points
+        and then using that as a search radius for polygons centered
+        around the two points. This will provide more polygons than necessary
+        but will be far fewer than checking all of the polygons for collision
+        """
         d = LA.norm(np.array(p2) - np.array(p1))
         idx = self._poly_tree.query_radius([p1[:2], p2[:2]], r=d)
         idx = set(list(idx[0]) + list(idx[1]))
@@ -55,9 +62,9 @@ class PolyLibrary:
         return polys
 
     def collides(self, point):
-        ''' Check if the point collides with any of the
-            polygons in the PolyLibrary
-        '''
+        """
+        Check if the point collides with any of the polygons in the PolyLibrary
+        """
         # Determine whether the point collides
         # with any obstacles.
         polygons = self.nearest_polys(point[:2])
@@ -67,8 +74,10 @@ class PolyLibrary:
         return False
 
     def get_height_at_point(self, point):
-        # Returns the height of the polygon containing
-        # the point, None otherwise.
+        """
+        This function returns the height of the polygon containing
+        the point, None otherwise.
+        """
         polygons = self.nearest_polys(point[:2])
         for p, h in polygons:
             if p.contains(Point(point)) and point[2] <= h:
@@ -99,6 +108,10 @@ class PolyLibrary:
 
 
 class CollidersData:
+    """
+    CollidersData is a thin wrapper around the data that comes out of the colliders.csv
+    file. It provides information about the dimensions of the underlying map.
+    """
     def __init__(self, data):
         self._data = data
 
@@ -118,58 +131,68 @@ class CollidersData:
 
     @property
     def xmin(self):
+        """ Returns the minimum x coordinate of any obstacle in colliders map """
         return self._xmin
 
     @property
     def xrange(self):
+        """ Returns the range of obstacle along x-axis in colliders map """
         return self._xrange
 
     @property
     def ymin(self):
+        """ Returns the minimum y coordinate of any obstacle in colliders map """
         return self._ymin
 
     @property
     def yrange(self):
+        """ Returns the range of obstacle along y-axis in colliders map """
         return self._yrange
 
     @property
     def zmin(self):
+        """ Returns the minimum z coordinate of any obstacle in colliders map """
         return self._zmin
 
     @property
     def zrange(self):
+        """ Returns the range of obstacle along z-axis in colliders map """
         return self._zrange
 
     @property
     def min(self):
+        """ Returns an (x, y, z) tuple of minimum coordinates. """
         return (self.xmin, self.ymin, self.zmin)
 
     @property
     def bounds2D(self):
+        """ Provides the (xmin, ymin, xmax, ymax) bounds of the colliders map. """
         return (self.xmin, self.ymin, self.xmin+self.xrange, self.ymin+self.yrange)
 
     @property
     def data(self):
+        """ Direct access to underlying data array """
         return self._data
 
-    def __getitem__(self, i, j):
-        return self._data[i, j]
+    def __getitem__(self, idx):
+        """ Access the rows of the underlying data """
+        return self._data[idx, :]
 
 
 class ProbabilisticRoadMap:
     def __init__(self, data, num_samples=1000, zmin=0, zmax=-1):
 
-        self._grid = CollidersData(data)
+        self._cdata = CollidersData(data)
         # Keep track of our own zmin & zmax in case we want to
         # narrow the sample space in the z-direction
         self._zmin = zmin
         if zmax < zmin:
             # Assume we should use the colliders max
-            zmax = self._grid.zrange - self._grid.zmin
+            zmax = self._cdata.zrange - self._cdata.zmin
         self._zmax = zmax
 
         # Create a PolyLibrary object for collision checking.
-        self._PL = PolyLibrary(data)
+        self._plib = PolyLibrary(data)
 
         nodes = self._sample_space(num_samples)
 
@@ -212,9 +235,9 @@ class ProbabilisticRoadMap:
         # Points are sampled in the half-open set [0, 1) so we need to
         # perform an affine transform in order to get them into the
         # same coordinates as our grid.
-        xrange, yrange = self._grid.xrange, self._grid.yrange
+        xrange, yrange = self._cdata.xrange, self._cdata.yrange
         zrange = self._zmax - self._zmin
-        xmin, ymin, zmin = self._grid.xmin, self._grid.ymin, self._zmin
+        xmin, ymin, zmin = self._cdata.xmin, self._cdata.ymin, self._zmin
         samples = (np.diag([xrange, yrange, zrange]).dot(r_vals) +
                    np.array([[xmin, ymin, zmin]]).transpose()).transpose().tolist()
 
@@ -222,12 +245,12 @@ class ProbabilisticRoadMap:
         nodes = []
         for point in samples:
             # Find the nearest polygons:
-            h = self._PL.get_height_at_point(point)
+            h = self._plib.get_height_at_point(point)
             if h:
                 nodes.append((point[0], point[1], h+zmin))
             else:
                 nodes.append(point)
-            #if not self._PL.collides(point):
+            #if not self._plib.collides(point):
             #    nodes.append(point)
         time_taken = time.time() - t0
         print("Collision checking took {0} seconds ...".format(time_taken))
@@ -272,7 +295,7 @@ class ProbabilisticRoadMap:
 
     def _can_connect(self, p1, p2):
         l = LineString([p1, p2])
-        for poly, height in self._PL.polys_between(p1, p2):
+        for poly, height in self._plib.polys_between(p1, p2):
             if l.intersects(poly) and min(p1[2], p2[2]) <= height:
                 return False
 

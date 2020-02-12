@@ -23,10 +23,10 @@ class VoronoiPlanner:
 
     def __init__(self, data, safety_distance):
 
-        self._PL = PolyLibrary(data)
+        self._plib = PolyLibrary(data)
         self._safety_distance = safety_distance
 
-        self._CD = CollidersData(data)
+        self._cdata = CollidersData(data)
 
         self._grid = None
 
@@ -43,7 +43,7 @@ class VoronoiPlanner:
         self._grid, centers = self._get_grid_and_centers(drone_altitude)
 
         # Convert centers to grid coordinates:
-        grid_min = np.array(self._CD.min)[0:2]
+        grid_min = np.array(self._cdata.min)[0:2]
         centers = (np.array(centers) - grid_min).tolist()
 
         # Create a voronoi graph based on location of obstacle centres
@@ -94,7 +94,7 @@ class VoronoiPlanner:
         graph = Voronoi(centers)
         #voronoi_plot_2d(graph)  # uncomment to view raw voronoi graph
 
-        x_min, y_min, x_max, y_max = self._CD.bounds2D
+        x_min, y_min, x_max, y_max = self._cdata.bounds2D
 
         # Check each edge from graph.ridge_vertices for collision
         edges = []
@@ -122,8 +122,8 @@ class VoronoiPlanner:
         #goal = list(self._graph.nodes)[k]
 
         if not self._graph:
-            h = max(self._PL.get_height_at_point(start),
-                    self._PL.get_height_at_point(goal))
+            h = max(self._plib.get_height_at_point(start),
+                    self._plib.get_height_at_point(goal))
             self.create_voronoi(h)
 
         start = (start[0], start[1])
@@ -148,10 +148,10 @@ class VoronoiPlanner:
 
 
     def _get_grid_and_centers(self, drone_altitude):
-        grid, grid_min = create_grid(self._CD.data, drone_altitude, self._safety_distance)
+        grid, _ = create_grid(self._cdata.data, drone_altitude, self._safety_distance)
 
-        centers = self._CD.data[:, 0:2].tolist()
-        height = self._CD.data[:, 2] + self._CD.data[:, 5] + self._safety_distance
+        centers = self._cdata.data[:, 0:2].tolist()
+        height = self._cdata.data[:, 2] + self._cdata.data[:, 5] + self._safety_distance
         centers = list(compress(centers, (height > drone_altitude).tolist()))
 
         return grid, centers
@@ -162,13 +162,13 @@ class VoronoiPlanner:
         t0 = time.time()
         polys_buffered = shapely.ops.unary_union(
             [p.buffer(self._safety_distance,
-                      resolution=1) for p, h in self._PL.polygons \
+                      resolution=1) for p, h in self._plib.polygons \
              if h > drone_altitude - self._safety_distance])
-        boundary = shapely.geometry.box(*self._CD.bounds2D)
+        boundary = shapely.geometry.box(*self._cdata.bounds2D)
         polys_buffered = boundary.intersection(polys_buffered)
         e_time = time.time() - t0
         print("Reduced {} polygons to {} polygons in {} seconds".format(
-            len(self._PL.polygons), len(polys_buffered.geoms), e_time))
+            len(self._plib.polygons), len(polys_buffered.geoms), e_time))
 
         return polys_buffered
 
