@@ -105,9 +105,9 @@ class MotionPlanning(Drone):
 
     def velocity_callback(self):
         if self.flight_state == States.LANDING:
-            if self.global_position[2] - self.global_home[2] < 0.1:
-                if abs(self.local_position[2]) < 0.01:
-                    self.disarming_transition()
+            if abs(self.local_position[2]) < (self.target_position[2] - 0.5) and \
+               abs(self.local_velocity[2]) < 0.25:
+                self.disarming_transition()
 
     def state_callback(self):
         if self.in_mission:
@@ -213,8 +213,9 @@ class MotionPlanning(Drone):
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
         # Select a random goal location from Google Maps (using longitude/latitude):
-        goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
+        #goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
         #goal_location = (-122.398718, 37.792104, 0)  # temporary closer spot
+        goal_location = (-122.396608, 37.794126, 0)  # top of a building!
 
         # Define a grid for a particular altitude and safety margin around obstacles
         # \TODO: This is a bit inefficient because the Voronoi planner will also create
@@ -230,6 +231,8 @@ class MotionPlanning(Drone):
             local_goal = tuple(global_to_local(goal_location, self.global_home).tolist())
             print('start: {}, goal: {}'.format(local_start, local_goal))
 
+            target_altitude_ = TARGET_ALTITUDE # Default to global value
+            
             if self._planner == Planner.PRM:
                 planner = ProbabilisticRoadMap(data, 500, TARGET_ALTITUDE, TARGET_ALTITUDE)
             else:
@@ -257,13 +260,18 @@ class MotionPlanning(Drone):
                 print(pruned_path)
                 print('pruned path has {} waypoints.'.format(len(pruned_path)))
 
-                path = [[p[0] + self._grid_offset[0], p[1] + self._grid_offset[1]] for \
-                        p in pruned_path]
+                path = [[p[0] + self._grid_offset[0],
+                         p[1] + self._grid_offset[1],
+                         int(target_altitude_)] for p in pruned_path]
 
-            waypoints = [[p[0], p[1], TARGET_ALTITUDE, 0] for p in path]
+            waypoints = [[p[0], p[1], p[2], 0] for p in path]
             print("Waypoints, no heading: ", waypoints)
             _calculate_waypoint_heading(waypoints)
             print("Updated waypoints: ", waypoints)
+
+            # Set the z target position here to 'target_altitude' so the quad takes
+            # off vertically.
+            self.target_position[2] = target_altitude_
 
         elif self._planner == Planner.GRID_2D:
             # Use grid-based A* to plan a path
@@ -309,13 +317,15 @@ class MotionPlanning(Drone):
             waypoints = [[p[0] + self._grid_offset[0], p[1] + self._grid_offset[1],
                           height, 0] for p in path]
 
+            # Set the z target position here to height so the quad takes off vertically.
+            self.target_position[2] = height
+
             print(waypoints)
             _calculate_waypoint_heading(waypoints)
             print(waypoints)
         else:
             print("Unknown planner type: {}. Aborting!".format(self._planner))
             self.landing_transition()
-
 
         # Set self.waypoints
         self.waypoints = waypoints
