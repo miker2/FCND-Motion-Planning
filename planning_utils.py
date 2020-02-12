@@ -1,16 +1,13 @@
+"""
+This is a collection of utilities and helper functions for performing grid-
+and graph-based planning
+"""
+
 from enum import Enum
 from queue import PriorityQueue
 import numpy as np
 
 
-# \todo(michael): Modify this so that the cells of the grid contain
-#                 the height information rather than a boolean
-#                 indicating occupied or not. This would make it
-#                 much easier to generate a boolean grid at any
-#                 height by doing something like: 'grid > 5'
-#  We can use np.maximum(a1, a2) to compare two arrays.
-#  The procedure would be to get the chunk of the 'grid' array
-#  and compare that to the new obstacle height.
 def create_2p5d_map(data, safety_distance):
     """
     Returns a 2.5D grid representation of a configuration space
@@ -30,13 +27,17 @@ def create_2p5d_map(data, safety_distance):
     north_size = int(np.ceil(north_max - north_min))
     east_size = int(np.ceil(east_max - east_min))
 
+    # Center offset for grid
+    #north_min_center = np.min(data[:, 0])
+    #east_min_center = np.min(data[:, 1])
+
     # Initialize an empty grid
     grid = np.zeros((north_size, east_size))
 
     # Populate the grid with obstacles
     for i in range(data.shape[0]):
         north, east, alt, d_north, d_east, d_alt = data[i, :]
-        height =  alt + d_alt + safety_distance
+        height = alt + d_alt + safety_distance
         obstacle = [
             int(np.clip(north - d_north - safety_distance - north_min, 0, north_size-1)),
             int(np.clip(north + d_north + safety_distance - north_min, 0, north_size-1)),
@@ -83,10 +84,12 @@ class Action2D(Enum):
 
     @property
     def cost(self):
+        # pylint: disable=unsubscriptable-object
         return self.value[2]
 
     @property
     def delta(self):
+        # pylint: disable=unsubscriptable-object
         return (self.value[0], self.value[1])
 
 
@@ -113,11 +116,16 @@ def valid_actions(grid, current_node):
     return valid
 
 def grid_get_children(grid, current_node):
+    """
+    A helper function for grid-base A* planning. This method
+    provides all valid children of a given node and their
+    associated edge cost.
+    """
     children = []
     for action in valid_actions(grid, current_node):
         da = action.delta
         children.append(((current_node[0] + da[0], current_node[1] + da[1]),
-                          action.cost))
+                         action.cost))
     return children
 
 
@@ -162,15 +170,21 @@ class ActionNED(Enum):
 
     @property
     def cost(self):
+        # pylint: disable=unsubscriptable-object
         return self.value[3]
 
     @property
     def delta(self):
+        # pylint: disable=unsubscriptable-object
         return (self.value[0], self.value[1], self.value[2])
 
 
 def grid_3d_get_children(map_2p5d, current_node):
-    valid = [a for a in ActionNED]
+    """
+    This method goes from a current node to all children nodes,
+    using the 'map_2p5d' grid object to collision check all possible
+    children nodes and eliminating those in collision with the map.
+    """
     n, m = map_2p5d.shape[0] - 1, map_2p5d.shape[1] - 1
     x, y, z = current_node
 
@@ -192,8 +206,13 @@ def grid_3d_get_children(map_2p5d, current_node):
     return children
 
 
-# Helper function for graph based search algorithm.
+
 def graph_get_children(graph, current_node):
+    """
+    This is a helper function for graph based search algorithm.
+    It returns all neighbors/children of a particular graph node
+    along with their associated edge cost.
+    """
     children = []
     for next_node in graph.neighbors(current_node):
         cost = graph.get_edge_data(current_node, next_node)['weight']
@@ -210,8 +229,6 @@ def a_star(get_children, h, start, goal):
         'start' is the starting node, a tuple.
         'goal'  is the terminal node, a tuple.
     """
-    path = []
-    path_cost = 0
     queue = PriorityQueue()
     queue.put((0, start))
     visited = set(start)
@@ -241,6 +258,8 @@ def a_star(get_children, h, start, goal):
                     branch[child_node] = (branch_cost, current_node)
                     queue.put((queue_cost, child_node))
 
+    path = []
+    path_cost = 0
     if found:
         # retrace steps
         n = goal
@@ -258,5 +277,7 @@ def a_star(get_children, h, start, goal):
 
 
 def heuristic(position, goal_position):
+    """
+    Calculate the euclidean distance between two nodes.
+    """
     return np.linalg.norm(np.array(position) - np.array(goal_position))
-

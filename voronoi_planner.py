@@ -1,4 +1,3 @@
-import pkg_resources
 import time
 from itertools import compress
 
@@ -8,20 +7,22 @@ from scipy.spatial import Voronoi
 from bresenham import bresenham
 
 import shapely
-import shapely.ops, shapely.prepared
-from prm import PolyLibrary, CollidersData
-from planning_utils import create_grid
+import shapely.ops
+import shapely.prepared
 
+import pkg_resources
 pkg_resources.require("networkx>=2.1")
 import networkx as nx
 
+from prm import PolyLibrary, CollidersData
+from planning_utils import create_grid
 from planning_utils import a_star, heuristic, graph_get_children
 
 
 class VoronoiPlanner:
 
     def __init__(self, data, safety_distance):
-        
+
         self._PL = PolyLibrary(data)
         self._safety_distance = safety_distance
 
@@ -44,7 +45,7 @@ class VoronoiPlanner:
         # Convert centers to grid coordinates:
         grid_min = np.array(self._CD.min)[0:2]
         centers = (np.array(centers) - grid_min).tolist()
-                    
+
         # Create a voronoi graph based on location of obstacle centres
         graph = Voronoi(centers)
         # voronoi_plot_2d(graph)  # uncomment to view raw voronoi graph
@@ -55,18 +56,18 @@ class VoronoiPlanner:
         for v in graph.ridge_vertices:
             p1 = graph.vertices[v[0]]
             p2 = graph.vertices[v[1]]
-            # Converting to int here would technically modify the 
+            # Converting to int here would technically modify the
             # voronoi diagram, so we'll use a new var name.
             p1i = [int(p) for p in p1]
             p2i = [int(p) for p in p2]
-        
+
             if p1[0] < 0 or p1[0] >= north_size or \
                p2[0] < 0 or p2[0] >= north_size or \
                p1[1] < 0 or p1[1] >= east_size or \
                p2[1] < 0 or p2[1] >= east_size or \
                self._grid[p1i[0], p1i[1]] or self._grid[p2i[0], p2i[1]]:
                 continue
-                
+
             # Then you can test each pair p1 and p2 for collision using Bresenham
             # (need to convert to integer if using prebuilt Python package)
             # If the edge does not hit an obstacle add it to the list
@@ -76,7 +77,7 @@ class VoronoiPlanner:
             in_collision = np.any([self._grid[p[0], p[1]] for p in line])
             if not in_collision:
                 edges.append((tuple(p1 + grid_min), tuple(p2 + grid_min)))
-    
+
         return self._create_graph(edges)
 
 
@@ -92,24 +93,24 @@ class VoronoiPlanner:
         # Create a voronoi graph based on location of obstacle centres
         graph = Voronoi(centers)
         #voronoi_plot_2d(graph)  # uncomment to view raw voronoi graph
-    
+
         x_min, y_min, x_max, y_max = self._CD.bounds2D
-    
+
         # Check each edge from graph.ridge_vertices for collision
         edges = []
         for v in graph.ridge_vertices:
             p1 = graph.vertices[v[0]]
             p2 = graph.vertices[v[1]]
-        
+
             if p1[0] < x_min or p1[0] > x_max or \
                p2[0] < x_min or p2[0] > x_max or \
                p1[1] < y_min or p1[1] > y_max or \
                p2[1] < y_min or p2[1] > y_max or \
                polys.intersects(shapely.geometry.LineString([tuple(p1), tuple(p2)])):
                 continue
-                
+
             edges.append((tuple(p1), tuple(p2)))
-    
+
         return self._create_graph(edges)
 
 
@@ -123,7 +124,7 @@ class VoronoiPlanner:
         if not self._graph:
             h = max(self._PL.get_height_at_point(start),
                     self._PL.get_height_at_point(goal))
-            self._create_voronoi(h)
+            self.create_voronoi(h)
 
         start = (start[0], start[1])
         goal = (goal[0], goal[1])
@@ -140,17 +141,17 @@ class VoronoiPlanner:
         self._graph.add_edge(near_goal, goal,
                              weight=LA.norm(np.array(near_goal)-np.array(goal)))
 
-        path, cost = a_star(lambda node: graph_get_children(self._graph, node),
-                            heuristic, start, goal)
+        path, _ = a_star(lambda node: graph_get_children(self._graph, node),
+                         heuristic, start, goal)
         print(len(path), path)
         return path
 
-    
+
     def _get_grid_and_centers(self, drone_altitude):
         grid, grid_min = create_grid(self._CD.data, drone_altitude, self._safety_distance)
-    
-        centers = self._CD.data[:,0:2].tolist()
-        height = self._CD.data[:,2] + self._CD.data[:,5] + self._safety_distance
+
+        centers = self._CD.data[:, 0:2].tolist()
+        height = self._CD.data[:, 2] + self._CD.data[:, 5] + self._safety_distance
         centers = list(compress(centers, (height > drone_altitude).tolist()))
 
         return grid, centers
@@ -180,7 +181,7 @@ class VoronoiPlanner:
                        weight=LA.norm(np.array(edge[0]) - np.array(edge[1])))
 
         self._graph = g
-        
+
         return g
 
     def _find_nearest_point(self, point):
@@ -207,6 +208,6 @@ class VoronoiPlanner:
         dist = np.linalg.norm(nodes - np.array(point), axis=1)
         # Find the index of the minimum distance and get the
         # corresponding node
-        nearest_node = nodes[dist.argmin(),:]
+        nearest_node = nodes[dist.argmin(), :]
 
         return tuple(nearest_node.tolist())

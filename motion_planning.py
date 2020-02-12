@@ -1,26 +1,25 @@
 import argparse
 import time
-import msgpack
-import re
 from enum import Enum, auto
+import msgpack
 
 import numpy as np
 from bresenham import bresenham
 
-from planning_utils import a_star, heuristic, create_grid, grid_get_children
-from planning_utils import create_2p5d_map, grid_3d_get_children
-from prm import ProbabilisticRoadMap
-from voronoi_planner import VoronoiPlanner
 from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
 from udacidrone.frame_utils import global_to_local
 
+from planning_utils import a_star, heuristic, create_grid, grid_get_children
+from planning_utils import create_2p5d_map, grid_3d_get_children
+from prm import ProbabilisticRoadMap
+from voronoi_planner import VoronoiPlanner
 
 ## Some helper functions
 def _calculate_waypoint_heading(waypoints):
 
-    for k in range(1,len(waypoints)):
+    for k in range(1, len(waypoints)):
         p0 = waypoints[k-1]
         p1 = waypoints[k]
         angle = np.arctan2(p1[1] - p0[1], p1[0] - p0[0])
@@ -38,7 +37,7 @@ def _prune_redundant(path, grid):
             pe = path[j]
             #print('Checking {} and {} for collisions.'.format(pi, pe))
             ray = bresenham(pi[0], pi[1], int(pe[0]), int(pe[1]))
-            redundant = (np.sum([grid[ri,rj] for ri, rj in ray]) == 0)
+            redundant = (np.sum([grid[ri, rj] for ri, rj in ray]) == 0)
             #print('j: {}, ray: {}, redundant: {}'.format(j, ray, redundant))
             if redundant:
                 j += 1
@@ -161,8 +160,8 @@ class MotionPlanning(Drone):
         self.connection._master.write(data)
 
     def global_to_grid(self, global_position):
-         _local_position = global_to_local(global_position, self.global_home)
-         return self.local_to_grid(_local_position)
+        _local_position = global_to_local(global_position, self.global_home)
+        return self.local_to_grid(_local_position)
 
     def local_to_grid(self, local_position):
         return (int(round(local_position[0]) - self._grid_offset[0]),
@@ -195,8 +194,6 @@ class MotionPlanning(Drone):
                                lat_lon_dict['lat0'],
                                0.0)
 
-        # TODO: retrieve current global position
-
         # We can convert to current local position using global_to_local(), but we don't
         # need to set the local_position, because that is done automatically now that the
         # home position has been set.
@@ -212,11 +209,11 @@ class MotionPlanning(Drone):
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
         # Select a random goal location from Google Maps (using longitude/latitude):
-        #goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
-        goal_location = (-122.398718, 37.792104, 0)  # temporary closer spot
+        goal_location = (-122.398132, 37.796304, 0)  # in front of The Punchline!
+        #goal_location = (-122.398718, 37.792104, 0)  # temporary closer spot
 
         if self._use_voronoi or self._use_prm:
-            local_start = tuple(self.local_position.tolist());
+            local_start = tuple(self.local_position.tolist())
             local_goal = tuple(global_to_local(goal_location, self.global_home).tolist())
             print('start: {}, goal: {}'.format(local_start, local_goal))
 
@@ -231,7 +228,8 @@ class MotionPlanning(Drone):
             if self._use_voronoi:
                 # This makes no sense, but if these values aren't 'int' types then
                 # The sending of waypoints doesn't seem to work and the quad doesn't
-                # take off and fly.
+                # take off and fly. Also, this access to private internal members
+                # is a bit of a hack!
                 self._grid_offset = (int(planner._CD.xmin), int(planner._CD.ymin))
                 print("Pruning path!")
                 grid_path = [self.local_to_grid(p) for p in path]
@@ -326,7 +324,8 @@ class MotionPlanning(Drone):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=5760, help='Port number')
-    parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
+    parser.add_argument('--host', type=str, default='127.0.0.1',
+                        help="host address, i.e. '127.0.0.1'")
     args = parser.parse_args()
 
     conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=60)

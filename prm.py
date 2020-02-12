@@ -1,15 +1,14 @@
-import pkg_resources
 import time
-
-pkg_resources.require("networkx>=2.1")
-import networkx as nx
 import chaospy
-
 import numpy as np
 import numpy.linalg as LA
 from shapely.geometry import Point, LineString
 from shapely.geometry import box as Box
 from sklearn.neighbors import KDTree
+
+import pkg_resources
+pkg_resources.require("networkx>=2.1")
+import networkx as nx
 
 from planning_utils import a_star, heuristic, graph_get_children
 
@@ -31,7 +30,7 @@ class PolyLibrary:
     def nearest_polys(self, point, num_polys=1):
         ''' This function returns the nearest N polygons to the 2D point '''
         idx = self._poly_tree.query([point], k=num_polys,
-                                       return_distance=False)[0]
+                                    return_distance=False)[0]
         polys = []
         for i in idx:
             polys.append(self.__getitem__(i))
@@ -107,7 +106,7 @@ class CollidersData:
         # the unit cube to this grid size.
         self._xmin = np.min(data[:, 0] - data[:, 3])
         xmax = np.max(data[:, 0] + data[:, 3])
-        self._xrange =  xmax - self._xmin
+        self._xrange = xmax - self._xmin
 
         self._ymin = np.min(data[:, 1] - data[:, 4])
         ymax = np.max(data[:, 1] + data[:, 4])
@@ -200,8 +199,8 @@ class ProbabilisticRoadMap:
         self._graph.add_edge(near_goal, goal,
                              weight=LA.norm(np.array(near_goal)-np.array(goal)))
 
-        path, cost = a_star(lambda node: graph_get_children(self._graph, node),
-                            heuristic, start, goal)
+        path, _ = a_star(lambda node: graph_get_children(self._graph, node),
+                         heuristic, start, goal)
         print(len(path), path)
         return path
 
@@ -217,7 +216,7 @@ class ProbabilisticRoadMap:
         zrange = self._zmax - self._zmin
         xmin, ymin, zmin = self._grid.xmin, self._grid.ymin, self._zmin
         samples = (np.diag([xrange, yrange, zrange]).dot(r_vals) +
-          np.array([[xmin, ymin, zmin]]).transpose()).transpose().tolist()
+                   np.array([[xmin, ymin, zmin]]).transpose()).transpose().tolist()
 
         t0 = time.time()
         nodes = []
@@ -251,13 +250,13 @@ class ProbabilisticRoadMap:
             # up to 'max_conns' of them.
             dist, node_idx = p_tree.query([n1], k=20)
             conns = 0
-            for idx, d in zip(node_idx[0],dist[0]):
+            for idx, d in zip(node_idx[0], dist[0]):
                 n2 = nodes[idx]
                 if n1 == n2:
                     continue
                 if d < min_dist:
                     print("skipping node {} due to min dist violation ({:.3} < {})".format(
-                    n2, d, min_dist))
+                        n2, d, min_dist))
                     continue
                 # Test the node for possible connectedness
                 if self._can_connect(n1, n2):
@@ -274,7 +273,7 @@ class ProbabilisticRoadMap:
     def _can_connect(self, p1, p2):
         l = LineString([p1, p2])
         for poly, height in self._PL.polys_between(p1, p2):
-            if l.crosses(poly) and min(p1[2], p2[2]) <= height:
+            if l.intersects(poly) and min(p1[2], p2[2]) <= height:
                 return False
 
         return True
@@ -303,8 +302,6 @@ class ProbabilisticRoadMap:
         dist = np.linalg.norm(nodes - np.array(point), axis=1)
         # Find the index of the minimum distance and get the
         # corresponding node
-        nearest_node = nodes[dist.argmin(),:]
+        nearest_node = nodes[dist.argmin(), :]
 
         return tuple(nearest_node.tolist())
-
-
