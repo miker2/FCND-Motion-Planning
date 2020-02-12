@@ -190,9 +190,45 @@ as follows:
 		plan = a_star(get_children, heuristic, start_node, goal_node)
 
 #### 6. Cull waypoints
-For this step you can use a collinearity test or ray tracing method like Bresenham. The idea is simply to prune your path of unnecessary waypoints. Explain the code you used to accomplish this step.
+I used the bresenham python package to perform raytracing in order to prune redundant and
+unecessary waypoints from the path. I used the following code to perform this function:
 
+    def _prune_redundant(path, grid):
+        if path is not None:
+            pruned_path = [path[0]]  # Initialize the pruned path with the first waypoint
+            j = 1  # Keep track of the index from the original path
+            while j < len(path):
+                pi = pruned_path[-1]  # initial point is the last element of the pruned_path
+                pe = path[j]          # end point is point 'j' from the original path
+								# Run bresenham algorithm to find all grid cells between 'pi' and 'pe'
+								# This graphics based algorithm will miss some cells, but with the
+								# buffer around the obstacles it shouldn't matter much.
+                ray = bresenham(pi[0], pi[1], int(pe[0]), int(pe[1]))
+								# Collect the value from the grid for all cells along the line between
+								# 'pi' and 'pe'. Take the sum. If no collisions, this should sum to 0.
+                redundant = (np.sum([grid[ri,rj] for ri, rj in ray]) == 0)
+                # We count a point as 'redundant' if there exists a collision free path
+								# between the end of the pruned_path (pi) the that point. Increment
+								# th counter and loop again.
+                if redundant:
+                    j += 1
+                else:
+                    pruned_path.append(path[j-1])  # Eliminating point 'j' leads to a
+										                               # collision, but the point before
+																									 # did not, so add it to the pruned_path
+																									 # list.
+            pruned_path.append(path[-1])  # Make sure the end of the 'path' list is included
+						                              # in the pruned_path list.
+            return pruned_path
+        else:
+            return path
 
+The code is commented to explain the algorithm, but basically we walk through the original path
+and find the first point that leads to a collision. The point just before this point was
+collision free, meaning it is the last non-redundant point in the path. We continue this process
+of adding the last collision free point to the list until we get to the end of the path. From
+testing in simulation this appears to be a good method of reducing the waypoints in the path. As
+a further speed improvement this algorithm could be converted to using a binary search method.
 
 ### Execute the flight
 #### 1. Does it work?
@@ -203,8 +239,5 @@ as the goal location and ran the planner in order to ensure that planning worked
 
 ### Double check that you've met specifications for each of the [rubric](https://review.udacity.com/#!/rubrics/1534/view) points.
 
-# Extra Challenges: Real World Planning
-
-For an extra challenge, consider implementing some of the techniques described in the "Real World Planning" lesson. You could try implementing a vehicle model to take dynamic constraints into account, or implement a replanning method to invoke if you get off course or encounter unexpected obstacles.
 
 
