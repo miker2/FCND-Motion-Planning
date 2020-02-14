@@ -14,7 +14,7 @@ import pkg_resources
 pkg_resources.require("networkx>=2.1")
 import networkx as nx
 
-from prm import PolyLibrary, CollidersData
+from obstacle_lib import PolyLibrary, CollidersData
 from planning_utils import create_grid
 from planning_utils import a_star, heuristic, graph_get_children
 
@@ -72,14 +72,12 @@ class VoronoiPlanner:
             # (need to convert to integer if using prebuilt Python package)
             # If the edge does not hit an obstacle add it to the list
             line = bresenham(p1i[0], p1i[1], p2i[0], p2i[1])
-            #print([p for p in pts])
             # Check to see if any of the points are in collision
             in_collision = np.any([self._grid[p[0], p[1]] for p in line])
             if not in_collision:
                 edges.append((tuple(p1 + grid_min), tuple(p2 + grid_min)))
 
         return self._create_graph(edges)
-
 
     def create_voronoi(self, drone_altitude):
         """
@@ -92,7 +90,6 @@ class VoronoiPlanner:
         polys = shapely.prepared.prep(polys)
         # Create a voronoi graph based on location of obstacle centres
         graph = Voronoi(centers)
-        #voronoi_plot_2d(graph)  # uncomment to view raw voronoi graph
 
         x_min, y_min, x_max, y_max = self._cdata.bounds2D
 
@@ -113,13 +110,7 @@ class VoronoiPlanner:
 
         return self._create_graph(edges)
 
-
     def plan_path(self, start, goal):
-
-        #start = list(self._graph.nodes)[10]
-        #k = np.random.randint(len(self._graph.nodes))
-        #print(k, len(self._graph.nodes))
-        #goal = list(self._graph.nodes)[k]
 
         if not self._graph:
             h = max(self._plib.get_height_at_point(start),
@@ -133,19 +124,18 @@ class VoronoiPlanner:
         near_start = self._find_nearest_point(start)
         print('Adding starting edge to graph: {} <-> {}'.format(start, near_start))
         self._graph.add_edge(start, near_start,
-                             weight=LA.norm(np.array(start)-np.array(near_start)))
+                             weight=LA.norm(np.array(start) - np.array(near_start)))
 
         # Do the same for the goal position:
         near_goal = self._find_nearest_point(goal)
         print('Adding goal edge to graph: {} <-> {}'.format(near_goal, goal))
         self._graph.add_edge(near_goal, goal,
-                             weight=LA.norm(np.array(near_goal)-np.array(goal)))
+                             weight=LA.norm(np.array(near_goal) - np.array(goal)))
 
         path, _ = a_star(lambda node: graph_get_children(self._graph, node),
                          heuristic, start, goal)
         print(len(path), path)
         return path
-
 
     def _get_grid_and_centers(self, drone_altitude):
         grid, _ = create_grid(self._cdata.data, drone_altitude, self._safety_distance)
@@ -156,13 +146,12 @@ class VoronoiPlanner:
 
         return grid, centers
 
-
     def _build_collision_regions(self, drone_altitude):
 
         t0 = time.time()
         polys_buffered = shapely.ops.unary_union(
             [p.buffer(self._safety_distance,
-                      resolution=1) for p, h in self._plib.polygons \
+                      resolution=1) for p, h in self._plib.polygons 
              if h > drone_altitude - self._safety_distance])
         boundary = shapely.geometry.box(*self._cdata.bounds2D)
         polys_buffered = boundary.intersection(polys_buffered)
@@ -171,7 +160,6 @@ class VoronoiPlanner:
             len(self._plib.polygons), len(polys_buffered.geoms), e_time))
 
         return polys_buffered
-
 
     def _create_graph(self, edges):
         g = nx.Graph()
@@ -199,7 +187,6 @@ class VoronoiPlanner:
         #      its neighbors
         #  (4) Project the point onto each of the lines and find the
         #      minimum distance point among the projections.
-
 
         # If we just want to look only for the nearest node, we can do
         # the following:
